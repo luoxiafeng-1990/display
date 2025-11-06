@@ -1,0 +1,10 @@
+config BR2_PACKAGE_DISPLAY
+	bool "display - Display Framework"
+	help
+	  Display framework provides a cross-platform abstraction layer
+	  for framebuffer display operations. Includes LinuxFramebufferDevice,
+	  VideoFile management, and PerformanceMonitor for video playback testing.
+	  
+	  This package generates a standalone 'display_test' executable for testing
+	  raw video file playback on framebuffer devices.
+
