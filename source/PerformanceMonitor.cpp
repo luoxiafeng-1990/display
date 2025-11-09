@@ -708,20 +708,21 @@ void PerformanceMonitor::printFinalStats() const {
     printf("  Final Statistics (after warm-up period)\n");
     printf("═══════════════════════════════════════════════════════\n\n");
     
-    // 计算总运行时间
+    // 计算总运行时间（从延迟结束后开始算）
     auto end_time = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - timer_real_start_time_);
+    double stats_time = duration.count() / 1000.0;
+    
+    // 总运行时间（包括延迟）
+    auto total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         end_time - baseline_time_);
-    double total_time = duration.count() / 1000.0;
+    double total_time = total_duration.count() / 1000.0;
     
-    // 计算延迟后的统计时间
-    double stats_time = total_time - timer_delay_seconds_;
-    if (stats_time < 0) stats_time = 0;
-    
-    // 计算延迟后的操作数
-    int effective_display_ops = frames_displayed_ - baseline_display_frames_;
-    int effective_load_frames = frames_loaded_ - baseline_load_frames_;
-    int effective_decode_frames = frames_decoded_ - baseline_decode_frames_;
+    // 计算延迟后的操作数（使用定时器的基准值，这是在延迟结束后记录的）
+    int effective_display_ops = frames_displayed_ - timer_start_frames_displayed_;
+    int effective_load_frames = frames_loaded_ - timer_start_frames_loaded_;
+    int effective_decode_frames = frames_decoded_ - timer_start_frames_decoded_;
     
     // 加载统计
     if (effective_load_frames > 0 || baseline_load_frames_ > 0) {

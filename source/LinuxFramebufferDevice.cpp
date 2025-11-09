@@ -27,7 +27,7 @@ LinuxFramebufferDevice::LinuxFramebufferDevice()
     , current_buffer_index_(0)
     , width_(0)
     , height_(0)
-    , bytes_per_pixel_(0)
+    , bits_per_pixel_(0)
     , buffer_size_(0)
     , is_initialized_(false)
 {
@@ -64,15 +64,15 @@ bool LinuxFramebufferDevice::initialize(int device_index) {
         return false;
     }
     
-    // 3. 初始化framebuffer信息
-    if (!initializeFramebufferInfo()) {
+    // 3. 查询硬件显示参数
+    if (!queryHardwareDisplayParameters()) {
         close(fd_);
         fd_ = -1;
         return false;
     }
     
-    // 4. mmap映射framebuffer内存
-    if (!mapFramebufferMemory()) {
+    // 4. mmap映射硬件framebuffer内存
+    if (!mapHardwareFramebufferMemory()) {
         close(fd_);
         fd_ = -1;
         return false;
@@ -85,8 +85,8 @@ bool LinuxFramebufferDevice::initialize(int device_index) {
     current_buffer_index_ = 0;
     
     // 打印初始化成功的总结信息
-    printf("✅ Display initialized: %dx%d, %d buffers, %d bytes/pixel\n",
-           width_, height_, static_cast<int>(buffers_.size()), bytes_per_pixel_);
+    printf("✅ Display initialized: %dx%d, %d buffers, %d bits/pixel\n",
+           width_, height_, static_cast<int>(buffers_.size()), bits_per_pixel_);
     
     return true;
 }
@@ -96,8 +96,8 @@ void LinuxFramebufferDevice::cleanup() {
         return;
     }
     
-    // 1. 解除内存映射
-    unmapFramebufferMemory();
+    // 1. 解除硬件framebuffer内存映射
+    unmapHardwareFramebufferMemory();
     
     // 2. 关闭文件描述符
     if (fd_ >= 0) {
@@ -124,7 +124,10 @@ int LinuxFramebufferDevice::getHeight() const {
 }
 
 int LinuxFramebufferDevice::getBytesPerPixel() const {
-    return bytes_per_pixel_;
+    // 注意：这里返回的是向上取整的字节数
+    // 例如：12bit -> 2字节，16bit -> 2字节，24bit -> 3字节
+    // 实际使用时可能需要根据具体的像素格式进行处理
+    return (bits_per_pixel_ + 7) / 8;
 }
 
 int LinuxFramebufferDevice::getBufferCount() const {
@@ -250,7 +253,7 @@ const char* LinuxFramebufferDevice::findDeviceNode(int device_index) {
     return NULL;
 }
 
-bool LinuxFramebufferDevice::initializeFramebufferInfo() {
+bool LinuxFramebufferDevice::queryHardwareDisplayParameters() {
     // 获取屏幕信息
     struct fb_var_screeninfo var_info;
     if (ioctl(fd_, FBIOGET_VSCREENINFO, &var_info) < 0) {
@@ -261,8 +264,12 @@ bool LinuxFramebufferDevice::initializeFramebufferInfo() {
     // 保存显示属性
     width_ = var_info.xres;
     height_ = var_info.yres;
-    bytes_per_pixel_ = var_info.bits_per_pixel / 8;
-    buffer_size_ = width_ * height_ * bytes_per_pixel_;
+    bits_per_pixel_ = var_info.bits_per_pixel;
+    
+    // 计算buffer大小：总位数 / 8 向上取整
+    // 对于非整数字节的像素格式（如12bit），这样可以确保分配足够的内存
+    size_t total_bits = static_cast<size_t>(width_) * height_ * bits_per_pixel_;
+    buffer_size_ = (total_bits + 7) / 8;  // 向上取整到字节
     
     // 计算buffer数量（虚拟高度 / 实际高度）
     int buffer_count = var_info.yres_virtual / var_info.yres;
@@ -280,7 +287,7 @@ bool LinuxFramebufferDevice::initializeFramebufferInfo() {
     return true;
 }
 
-bool LinuxFramebufferDevice::mapFramebufferMemory() {
+bool LinuxFramebufferDevice::mapHardwareFramebufferMemory() {
     // 计算需要映射的总大小
     framebuffer_total_size_ = buffer_size_ * buffers_.size();
     
@@ -334,7 +341,7 @@ void LinuxFramebufferDevice::calculateBufferAddresses() {
     }
 }
 
-void LinuxFramebufferDevice::unmapFramebufferMemory() {
+void LinuxFramebufferDevice::unmapHardwareFramebufferMemory() {
     if (framebuffer_base_ != nullptr) {
         if (munmap(framebuffer_base_, framebuffer_total_size_) < 0) {
             printf("⚠️  Warning: munmap failed: %s\n", strerror(errno));

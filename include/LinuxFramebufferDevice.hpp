@@ -34,7 +34,7 @@ private:
     // ============ 显示属性 ============
     int width_;                       // 显示宽度（像素）
     int height_;                      // 显示高度（像素）
-    int bytes_per_pixel_;             // 每像素字节数
+    int bits_per_pixel_;              // 每像素位数（可以是非整数字节，如12bit、16bit、24bit、32bit等）
     size_t buffer_size_;              // 单个buffer大小（字节）
     
     // ============ 状态标志 ============
@@ -43,16 +43,16 @@ private:
     // ============ 内部辅助方法 ============
     
     /**
-     * 初始化framebuffer信息
-     * 通过ioctl读取分辨率、buffer数量等
+     * 查询硬件显示参数
+     * 通过ioctl从硬件读取分辨率、bits_per_pixel、buffer数量等显示参数
      */
-    bool initializeFramebufferInfo();
+    bool queryHardwareDisplayParameters();
     
     /**
      * 执行mmap映射
-     * 将整个framebuffer映射到用户空间
+     * 将整个硬件framebuffer内存映射到用户空间
      */
-    bool mapFramebufferMemory();
+    bool mapHardwareFramebufferMemory();
     
     /**
      * 计算每个buffer的虚拟地址
@@ -61,9 +61,9 @@ private:
     void calculateBufferAddresses();
     
     /**
-     * 解除mmap映射
+     * 解除硬件framebuffer内存的mmap映射
      */
-    void unmapFramebufferMemory();
+    void unmapHardwareFramebufferMemory();
 
 public:
     LinuxFramebufferDevice();
