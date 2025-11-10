@@ -206,12 +206,11 @@ private:
     std::condition_variable free_cv_;    // 空闲队列条件变量
     std::condition_variable filled_cv_;  // 就绪队列条件变量
     
-    // ============ 生产者线程管理 ============
-    std::thread producer_thread_;                    // 生产者线程对象（单线程模式）
-    std::vector<std::thread> producer_threads_;      // 生产者线程数组（多线程模式）
-    std::atomic<bool> producer_running_;             // 线程运行标志
-    std::atomic<ProducerState> producer_state_;      // 线程状态
-    int producer_thread_count_;                      // 生产者线程数量
+    // ============ 生产者线程管理（统一使用 vector 支持单/多线程）============
+    std::vector<std::thread> producer_threads_;      // 生产者线程数组（支持1个或多个线程）
+    std::atomic<bool> producer_running_;             // 线程运行标志（所有线程共享）
+    std::atomic<ProducerState> producer_state_;      // 线程状态（所有线程共享）
+    int producer_thread_count_;                      // 当前运行的生产者线程数量
     
     // 多线程协调（用于多生产者模式）
     std::atomic<int> next_frame_index_;              // 下一个要读取的帧索引
@@ -252,6 +251,23 @@ private:
      * @param addr 内存地址
      */
     void freeNormalMemory(void* addr);
+    
+    /**
+     * 统一的生产者启动内部实现
+     * @param thread_count 线程数量（1表示单线程，>1表示多线程）
+     * @param video_file_path 视频文件路径
+     * @param width 视频宽度
+     * @param height 视频高度
+     * @param bits_per_pixel 每像素位数
+     * @param loop 是否循环播放
+     * @param error_callback 错误回调
+     * @return 成功返回true
+     */
+    bool startVideoProducerInternal(int thread_count,
+                                   const char* video_file_path, 
+                                   int width, int height, int bits_per_pixel,
+                                   bool loop,
+                                   ErrorCallback error_callback);
     
     /**
      * 视频文件生产者线程函数（单线程模式）

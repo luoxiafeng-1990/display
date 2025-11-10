@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <chrono>
 #include "include/LinuxFramebufferDevice.hpp"
 #include "include/VideoFile.hpp"
 #include "include/PerformanceMonitor.hpp"
@@ -267,10 +268,10 @@ static int test_buffermanager_producer(const char* raw_video_path) {
     printf("   Frame size: %zu bytes (%.2f MB)\n", frame_size, frame_size / (1024.0 * 1024.0));
     printf("   Buffer count: %d\n", display.getBufferCount());
     
-    // 2. 创建 BufferManager（使用5个buffer）
-    BufferManager manager(40, frame_size, true);
+    // 2. 创建 BufferManager（使用 shared_ptr 管理）
+    auto manager = std::make_shared<BufferManager>(40, frame_size, true);
     
-    printf("\n📦 BufferManager created with 5 buffers\n");
+    printf("\n📦 BufferManager created with 40 buffers\n");
     
     // 3. 创建性能监控器
     PerformanceMonitor monitor;
@@ -278,7 +279,7 @@ static int test_buffermanager_producer(const char* raw_video_path) {
     
     // 配置定时器 - 使用新的任务类型打印 BufferManager 状态
     monitor.setTimerTask(TASK_PRINT_WITH_BUFFERMANAGER);
-    monitor.setBufferManager(&manager);  // 设置 BufferManager 指针
+    monitor.setBufferManager(manager);  // ✅ 传递 shared_ptr（PerformanceMonitor 内部用 weak_ptr 观察）
     monitor.setTimerInterval(1.0, 10.0);  // 每1秒统计，延迟10秒
     monitor.startTimer();
     
@@ -291,7 +292,7 @@ static int test_buffermanager_producer(const char* raw_video_path) {
     int producer_thread_count = 3;  // 使用3个生产者线程
     printf("   Using %d producer threads for parallel reading\n", producer_thread_count);
     
-    bool started = manager.startMultipleVideoProducers(
+    bool started = manager->startMultipleVideoProducers(
         producer_thread_count,  // 线程数量
         raw_video_path,
         display.getWidth(),
@@ -322,15 +323,15 @@ static int test_buffermanager_producer(const char* raw_video_path) {
     
     while (g_running) {
         // 检查生产者状态
-        auto state = manager.getProducerState();
+        auto state = manager->getProducerState();
         if (state == BufferManager::ProducerState::ERROR) {
             printf("❌ Producer encountered an error: %s\n", 
-                   manager.getLastProducerError().c_str());
+                   manager->getLastProducerError().c_str());
             break;
         }
         
         // 获取一个已填充的 buffer（阻塞，100ms超时）
-        Buffer* filled_buffer = manager.acquireFilledBuffer(true, 100);
+        Buffer* filled_buffer = manager->acquireFilledBuffer(true, 100);
         if (filled_buffer == nullptr) {
             // 超时，继续等待
             printf("🔄 Producer thread no valid buffer, waiting for 100ms...\n");
@@ -352,12 +353,13 @@ static int test_buffermanager_producer(const char* raw_video_path) {
         
         // 显示帧
         monitor.beginDisplayFrameTiming();
+        // 性能分析：测量VSync等待时间
         display.waitVerticalSync();
         display.displayBuffer(current_display_buffer);
         monitor.endDisplayFrameTiming();
         
         // 回收 buffer 到空闲队列
-        manager.recycleBuffer(filled_buffer);
+        manager->recycleBuffer(filled_buffer);
         
         // 切换到下一个 display buffer
         current_display_buffer = (current_display_buffer + 1) % display.getBufferCount();
@@ -366,7 +368,7 @@ static int test_buffermanager_producer(const char* raw_video_path) {
     
     // 6. 停止生产者线程
     printf("\n\n🛑 Stopping video producer thread...\n");
-    manager.stopVideoProducer();
+    manager->stopVideoProducer();
     
     // 停止性能监控定时器
     monitor.stopTimer();
@@ -377,8 +379,8 @@ static int test_buffermanager_producer(const char* raw_video_path) {
     monitor.printFinalStats();
     printf("   Total frames displayed: %d\n", frame_count);
     printf("   Final buffer states:\n");
-    printf("     - Free buffers: %d\n", manager.getFreeBufferCount());
-    printf("     - Filled buffers: %d\n", manager.getFilledBufferCount());
+    printf("     - Free buffers: %d\n", manager->getFreeBufferCount());
+    printf("     - Filled buffers: %d\n", manager->getFilledBufferCount());
     
     printf("\n✅ Test completed successfully\n");
     

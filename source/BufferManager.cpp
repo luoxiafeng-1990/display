@@ -159,11 +159,15 @@ void BufferManager::submitFilledBuffer(Buffer* buffer) {
         return;
     }
     
+    int queue_size_before = 0;
+    int queue_size_after = 0;
+    
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        queue_size_before = filled_queue_.size();
         filled_queue_.push(buffer);
+        queue_size_after = filled_queue_.size();
     }
-    
     // 通知等待的消费者
     filled_cv_.notify_one();
 }
@@ -173,12 +177,21 @@ void BufferManager::submitFilledBuffer(Buffer* buffer) {
 Buffer* BufferManager::acquireFilledBuffer(bool blocking, int timeout_ms) {
     std::unique_lock<std::mutex> lock(mutex_);
     
+    // 调试：记录队列状态
+    int queue_size = filled_queue_.size();
+    static int acquire_attempts = 0;
+    acquire_attempts++;
+    
     if (blocking) {
         if (timeout_ms > 0) {
             // 带超时的等待
             auto timeout = std::chrono::milliseconds(timeout_ms);
             if (!filled_cv_.wait_for(lock, timeout, [this] { return !filled_queue_.empty(); })) {
                 // 超时
+                if (acquire_attempts % 50 == 0) {
+                    printf("   [DEBUG] acquireFilledBuffer timeout (attempt %d, queue_size=%d)\n",
+                           acquire_attempts, filled_queue_.size());
+                }
                 return nullptr;
             }
         } else {
@@ -321,17 +334,24 @@ void BufferManager::freeNormalMemory(void* addr) {
 
 // ============ 生产者线程接口实现 ============
 
-bool BufferManager::startVideoProducer(const char* video_file_path, 
-                                      int width, int height, int bits_per_pixel,
-                                      bool loop,
-                                      ErrorCallback error_callback) {
+// 统一的内部实现：支持单线程和多线程模式
+bool BufferManager::startVideoProducerInternal(int thread_count,
+                                              const char* video_file_path, 
+                                              int width, int height, int bits_per_pixel,
+                                              bool loop,
+                                              ErrorCallback error_callback) {
     // 检查是否已经在运行
     if (producer_running_) {
-        printf("⚠️  Warning: Producer thread is already running\n");
+        printf("⚠️  Warning: Producer thread(s) already running\n");
         return false;
     }
     
-    printf("\n🎬 Starting video producer thread...\n");
+    if (thread_count < 1) {
+        printf("❌ ERROR: Thread count must be >= 1\n");
+        return false;
+    }
+    
+    printf("\n🎬 Starting %d video producer thread(s)...\n", thread_count);
     printf("   Video file: %s\n", video_file_path);
     printf("   Resolution: %dx%d\n", width, height);
     printf("   Bits per pixel: %d\n", bits_per_pixel);
@@ -343,22 +363,91 @@ bool BufferManager::startVideoProducer(const char* video_file_path,
     // 重置状态
     producer_running_ = true;
     producer_state_ = ProducerState::RUNNING;
+    producer_thread_count_ = thread_count;
     last_error_.clear();
     
-    // 启动线程
-    try {
-        producer_thread_ = std::thread(&BufferManager::videoProducerThread, this,
-                                      video_file_path, width, height, bits_per_pixel, loop);
-        printf("✅ Video producer thread started\n");
-        return true;
-    } catch (const std::exception& e) {
-        producer_running_ = false;
-        producer_state_ = ProducerState::ERROR;
-        std::string error_msg = std::string("Failed to start producer thread: ") + e.what();
-        setError(error_msg);
-        printf("❌ %s\n", error_msg.c_str());
-        return false;
+    // 如果是多线程模式（thread_count > 1），需要获取总帧数
+    int total_frames = 0;
+    if (thread_count > 1) {
+        VideoFile test_video;
+        if (!test_video.openRaw(video_file_path, width, height, bits_per_pixel)) {
+            printf("❌ ERROR: Failed to open video file for validation\n");
+            producer_running_ = false;
+            producer_state_ = ProducerState::ERROR;
+            return false;
+        }
+        
+        total_frames = test_video.getTotalFrames();
+        size_t frame_size = test_video.getFrameSize();
+        
+        printf("   Total frames: %d\n", total_frames);
+        printf("   Frame size: %zu bytes\n", frame_size);
+        
+        // 检查帧大小是否匹配
+        if (frame_size != buffer_size_) {
+            printf("❌ ERROR: Frame size mismatch: video=%zu, buffer=%zu\n",
+                   frame_size, buffer_size_);
+            producer_running_ = false;
+            producer_state_ = ProducerState::ERROR;
+            return false;
+        }
+        
+        test_video.close();
+        next_frame_index_ = 0;  // 重置帧索引（多线程模式）
     }
+    
+    // 启动线程
+    producer_threads_.reserve(thread_count);
+    for (int i = 0; i < thread_count; i++) {
+        try {
+            if (thread_count == 1) {
+                // 单线程模式：使用简单的 videoProducerThread
+                producer_threads_.emplace_back(&BufferManager::videoProducerThread, this,
+                                              video_file_path, width, height, bits_per_pixel, loop);
+            } else {
+                // 多线程模式：使用协调的 multiVideoProducerThread
+                producer_threads_.emplace_back(&BufferManager::multiVideoProducerThread, this,
+                                              i, video_file_path, width, height, 
+                                              bits_per_pixel, loop, total_frames);
+            }
+            
+            if (thread_count == 1) {
+                printf("✅ Video producer thread started\n");
+            } else {
+                printf("   ✅ Producer thread #%d started\n", i);
+            }
+        } catch (const std::exception& e) {
+            printf("❌ ERROR: Failed to start producer thread #%d: %s\n", i, e.what());
+            // 停止已启动的线程
+            producer_running_ = false;
+            for (auto& thread : producer_threads_) {
+                if (thread.joinable()) {
+                    thread.join();
+                }
+            }
+            producer_threads_.clear();
+            producer_state_ = ProducerState::ERROR;
+            std::string error_msg = std::string("Failed to start producer thread: ") + e.what();
+            setError(error_msg);
+            return false;
+        }
+    }
+    
+    if (thread_count > 1) {
+        printf("✅ All %d video producer threads started successfully\n", thread_count);
+    }
+    
+    return true;
+}
+
+// 单线程模式便利接口（内部调用统一实现）
+bool BufferManager::startVideoProducer(const char* video_file_path, 
+                                      int width, int height, int bits_per_pixel,
+                                      bool loop,
+                                      ErrorCallback error_callback) {
+    // 调用统一实现，thread_count = 1
+    return startVideoProducerInternal(1, video_file_path, width, height, 
+                                     bits_per_pixel, loop, error_callback);
 }
 
 void BufferManager::stopVideoProducer() {
@@ -375,12 +464,7 @@ void BufferManager::stopVideoProducer() {
     free_cv_.notify_all();
     filled_cv_.notify_all();
     
-    // 等待单线程退出
-    if (producer_thread_.joinable()) {
-        producer_thread_.join();
-    }
-    
-    // 等待所有多线程退出
+    // 等待所有线程退出（统一使用 producer_threads_）
     for (auto& thread : producer_threads_) {
         if (thread.joinable()) {
             thread.join();
@@ -535,85 +619,15 @@ void BufferManager::setError(const std::string& error_msg) {
 
 // ============ 多生产者线程接口实现 ============
 
+// 多线程模式便利接口（内部调用统一实现）
 bool BufferManager::startMultipleVideoProducers(int thread_count,
                                                const char* video_file_path, 
                                                int width, int height, int bits_per_pixel,
                                                bool loop,
                                                ErrorCallback error_callback) {
-    // 检查是否已经在运行
-    if (producer_running_) {
-        printf("⚠️  Warning: Producer thread(s) already running\n");
-        return false;
-    }
-    
-    if (thread_count < 1) {
-        printf("❌ ERROR: Thread count must be >= 1\n");
-        return false;
-    }
-    
-    printf("\n🎬 Starting %d video producer threads...\n", thread_count);
-    printf("   Video file: %s\n", video_file_path);
-    printf("   Resolution: %dx%d\n", width, height);
-    printf("   Bits per pixel: %d\n", bits_per_pixel);
-    printf("   Loop mode: %s\n", loop ? "enabled" : "disabled");
-    
-    // 先打开一个VideoFile来获取总帧数
-    VideoFile test_video;
-    if (!test_video.openRaw(video_file_path, width, height, bits_per_pixel)) {
-        printf("❌ ERROR: Failed to open video file for validation\n");
-        return false;
-    }
-    
-    int total_frames = test_video.getTotalFrames();
-    size_t frame_size = test_video.getFrameSize();
-    
-    printf("   Total frames: %d\n", total_frames);
-    printf("   Frame size: %zu bytes\n", frame_size);
-    
-    // 检查帧大小是否匹配
-    if (frame_size != buffer_size_) {
-        printf("❌ ERROR: Frame size mismatch: video=%zu, buffer=%zu\n",
-               frame_size, buffer_size_);
-        return false;
-    }
-    
-    test_video.close();
-    
-    // 保存错误回调
-    error_callback_ = error_callback;
-    
-    // 重置状态
-    producer_running_ = true;
-    producer_state_ = ProducerState::RUNNING;
-    producer_thread_count_ = thread_count;
-    next_frame_index_ = 0;  // 重置帧索引
-    last_error_.clear();
-    
-    // 启动多个生产者线程
-    producer_threads_.reserve(thread_count);
-    for (int i = 0; i < thread_count; i++) {
-        try {
-            producer_threads_.emplace_back(&BufferManager::multiVideoProducerThread, this,
-                                          i, video_file_path, width, height, 
-                                          bits_per_pixel, loop, total_frames);
-            printf("   ✅ Producer thread #%d started\n", i);
-        } catch (const std::exception& e) {
-            printf("❌ ERROR: Failed to start producer thread #%d: %s\n", i, e.what());
-            // 停止已启动的线程
-            producer_running_ = false;
-            for (auto& thread : producer_threads_) {
-                if (thread.joinable()) {
-                    thread.join();
-                }
-            }
-            producer_threads_.clear();
-            producer_state_ = ProducerState::ERROR;
-            return false;
-        }
-    }
-    
-    printf("✅ All %d video producer threads started successfully\n", thread_count);
-    return true;
+    // 调用统一实现
+    return startVideoProducerInternal(thread_count, video_file_path, width, height, 
+                                     bits_per_pixel, loop, error_callback);
 }
 
 // ============ 多生产者线程函数 ============
@@ -622,15 +636,13 @@ void BufferManager::multiVideoProducerThread(int thread_id,
                                             const char* video_file_path, 
                                             int width, int height, int bits_per_pixel,
                                             bool loop, int total_frames) {
-    printf("\n🎥 Producer thread #%d started (TID: %ld)\n", 
-           thread_id, (long)pthread_self());
-    
     // 每个线程打开自己的VideoFile实例
     VideoFile video;
     if (!video.openRaw(video_file_path, width, height, bits_per_pixel)) {
         std::string error_msg = std::string("Thread #") + std::to_string(thread_id) + 
                                 ": Failed to open video file";
         setError(error_msg);
+        printf("❌ %s\n", error_msg.c_str());
         producer_state_ = ProducerState::ERROR;
         return;
     }
@@ -638,28 +650,37 @@ void BufferManager::multiVideoProducerThread(int thread_id,
     int frames_produced = 0;
     
     // 主循环
+    int loop_iterations = 0;
+    int skipped_frames = 0;  // 跳过的帧数（无法获取buffer或读取失败）
+    
     while (producer_running_) {
+        loop_iterations++;
+        
         // 原子地获取下一个要读取的帧索引
         int frame_index = next_frame_index_.fetch_add(1);
         
         // 检查是否超出范围
         if (frame_index >= total_frames) {
             if (loop) {
-                // 循环模式：重置索引
-                // 使用 compare_exchange 来安全地重置
-                int expected = frame_index + 1;
-                while (next_frame_index_.load() >= total_frames) {
-                    next_frame_index_.compare_exchange_weak(expected, 0);
-                    expected = next_frame_index_.load();
+                // 循环模式：重置索引（使用模运算，更简单可靠）
+                if (total_frames > 0) {
+                    frame_index = frame_index % total_frames;
+                } else {
+                    printf("❌ Thread #%d: total_frames is %d, cannot loop!\n", 
+                           thread_id, total_frames);
+                    break;
                 }
-                frame_index = next_frame_index_.fetch_add(1);
-                if (frame_index >= total_frames) {
-                    continue;  // 其他线程已经重置，重试
+                
+                // 如果索引太大，尝试重置计数器（避免整数溢出）
+                int current = next_frame_index_.load();
+                if (current > total_frames * 2) {
+                    // 重置到合理范围
+                    int expected = current;
+                    int new_value = frame_index + 1;
+                    next_frame_index_.compare_exchange_strong(expected, new_value);
                 }
-                printf("   Thread #%d: Looping back to frame 0\n", thread_id);
             } else {
                 // 非循环模式：退出
-                printf("   Thread #%d: Reached end of file, exiting\n", thread_id);
                 break;
             }
         }
@@ -671,30 +692,51 @@ void BufferManager::multiVideoProducerThread(int thread_id,
             if (!producer_running_) {
                 break;
             }
-            // 回退帧索引，让其他线程重试
-            next_frame_index_.fetch_sub(1);
-            continue;
+            // ❌ 不要回退帧索引！跳过这一帧，继续下一帧
+            // 回退会导致死循环，特别是当frame_index已经循环后
+            skipped_frames++;
+            continue;  // 直接continue，不回退，让帧索引自然前进
         }
         
         // 跳转到指定帧并读取
-        if (!video.readFrameAt(frame_index, *buffer)) {
-            printf("⚠️  Thread #%d: Failed to read frame %d\n", thread_id, frame_index);
-            recycleBuffer(buffer);  // 归还 buffer
-            // 回退帧索引
-            next_frame_index_.fetch_sub(1);
+        // 验证：frame_index应该在有效范围内
+        if (frame_index < 0 || frame_index >= total_frames) {
+            printf("❌ Thread #%d: Invalid frame_index=%d (should be 0-%d)!\n",
+                   thread_id, frame_index, total_frames - 1);
+            recycleBuffer(buffer);
             continue;
         }
         
+        bool read_success = video.readFrameAt(frame_index, *buffer);
+        if (!read_success) {
+            skipped_frames++;
+            printf("⚠️  Thread #%d: Failed to read frame %d/%d\n", 
+                   thread_id, frame_index, total_frames);
+            
+            recycleBuffer(buffer);  // 归还 buffer
+            
+            // 连续失败检测
+            static thread_local int consecutive_failures = 0;
+            consecutive_failures++;
+            if (consecutive_failures > 5) {
+                char error_msg[256];
+                snprintf(error_msg, sizeof(error_msg),
+                        "Thread #%d: Too many consecutive read failures (%d)",
+                        thread_id, consecutive_failures);
+                setError(error_msg);
+                producer_state_ = ProducerState::ERROR;
+                break;
+            }
+            continue;
+        }
+        
+        // 重置失败计数
+        static thread_local int consecutive_failures = 0;
+        consecutive_failures = 0;
+        
         // 将填充好的 buffer 提交到就绪队列
         submitFilledBuffer(buffer);
-        
         frames_produced++;
-        if (frames_produced % 50 == 0) {
-            printf("   Thread #%d: Produced %d frames\n", thread_id, frames_produced);
-        }
     }
-    
-    printf("\n✅ Producer thread #%d exiting (produced %d frames)\n", 
-           thread_id, frames_produced);
 }
 

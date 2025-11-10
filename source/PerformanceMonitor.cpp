@@ -35,7 +35,7 @@ PerformanceMonitor::PerformanceMonitor()
     , baseline_display_frames_(0)
     , baseline_load_frames_(0)
     , baseline_decode_frames_(0)
-    , buffer_manager_(nullptr)  // 初始化为空指针
+    , buffer_manager_()  // 默认构造为空 weak_ptr
 {
 }
 
@@ -398,9 +398,9 @@ void PerformanceMonitor::setTimerTask(TimerTaskType task) {
     printf("📋 Timer task set to: %s\n", task_name);
 }
 
-void PerformanceMonitor::setBufferManager(BufferManager* manager) {
-    buffer_manager_ = manager;
-    printf("📦 BufferManager pointer set for monitoring\n");
+void PerformanceMonitor::setBufferManager(std::shared_ptr<BufferManager> manager) {
+    buffer_manager_ = manager;  // shared_ptr 自动转换为 weak_ptr
+    printf("📦 BufferManager set for monitoring (using weak_ptr for safety)\n");
 }
 
 void PerformanceMonitor::setTimerInterval(double interval_seconds, double delay_seconds) {
@@ -781,14 +781,14 @@ void PerformanceMonitor::executeTaskWithBufferManager(double interval, int load_
         printf("⏱️  总运行时间: %.2f 秒\n", total_time);
     }
     
-    // 打印 BufferManager 状态
-    if (buffer_manager_ != nullptr) {
+    // 打印 BufferManager 状态（使用 weak_ptr 安全访问）
+    if (auto manager = buffer_manager_.lock()) {  // 尝试获取 shared_ptr
         printf("┌─────────────────────────────────────────────────────┐\n");
         printf("│      📦 BufferManager 状态                      │\n");
         printf("└─────────────────────────────────────────────────────┘\n");
         
         // 获取生产者状态
-        auto state = buffer_manager_->getProducerState();
+        auto state = manager->getProducerState();
         const char* state_str = "";
         switch (state) {
             case BufferManager::ProducerState::STOPPED:
@@ -803,11 +803,12 @@ void PerformanceMonitor::executeTaskWithBufferManager(double interval, int load_
         }
         
         printf("🎬 生产者状态: %s\n", state_str);
-        printf("📊 已填充buffer: %d 个\n", buffer_manager_->getFilledBufferCount());
-        printf("📦 空闲buffer: %d 个\n", buffer_manager_->getFreeBufferCount());
-        printf("📈 总buffer数: %d 个\n", buffer_manager_->getTotalBufferCount());
+        printf("📊 已填充buffer: %d 个\n", manager->getFilledBufferCount());
+        printf("📦 空闲buffer: %d 个\n", manager->getFreeBufferCount());
+        printf("📈 总buffer数: %d 个\n", manager->getTotalBufferCount());
     } else {
-        printf("⚠️  BufferManager pointer not set\n");
+        // BufferManager 已被销毁或未设置
+        printf("⚠️  BufferManager is not available (destroyed or not set)\n");
     }
     
     printf("\n");

@@ -7,6 +7,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
+#include <memory>  // 添加智能指针支持
 
 // 前向声明
 class BufferManager;
@@ -107,8 +108,8 @@ private:
     int baseline_load_frames_;      // 定时器启动时的加载帧数
     int baseline_decode_frames_;    // 定时器启动时的解码帧数
     
-    // BufferManager 状态监控
-    BufferManager* buffer_manager_;  // BufferManager 指针（用于 TASK_PRINT_WITH_BUFFERMANAGER）
+    // BufferManager 状态监控（使用 weak_ptr 安全观察）
+    std::weak_ptr<BufferManager> buffer_manager_;  // BufferManager 弱引用（用于 TASK_PRINT_WITH_BUFFERMANAGER）
     
     // ============ 内部辅助方法 ============
     
@@ -338,14 +339,19 @@ public:
     void setTimerTask(TimerTaskType task);
     
     /**
-     * 设置 BufferManager 指针
+     * 设置 BufferManager 指针（使用智能指针安全管理）
      * 
      * 用于 TASK_PRINT_WITH_BUFFERMANAGER 任务类型。
      * 定时器会打印 BufferManager 的状态信息（生产者状态、buffer数量等）。
      * 
-     * @param manager BufferManager 指针
+     * 使用 weak_ptr 确保：
+     * - 不会意外延长 BufferManager 的生命周期
+     * - 可以安全检测 BufferManager 是否已被销毁
+     * - 避免悬空指针问题
+     * 
+     * @param manager BufferManager 的 shared_ptr
      */
-    void setBufferManager(BufferManager* manager);
+    void setBufferManager(std::shared_ptr<BufferManager> manager);
     
     /**
      * 设置定时器间隔
