@@ -530,15 +530,19 @@ void BufferManager::videoProducerThread(const char* video_file_path,
     
     // 主循环
     while (producer_running_) {
-        // 获取空闲 buffer
-        Buffer* buffer = acquireFreeBuffer(true, 100);  // 100ms 超时
-        if (buffer == nullptr) {
-            // 超时或被中断
-            if (!producer_running_) {
-                break;
-            }
-            continue;
+        // 获取空闲 buffer - 循环等待直到成功（不跳帧，保证视频连续性）
+        Buffer* buffer = nullptr;
+        while (producer_running_ && buffer == nullptr) {
+            buffer = acquireFreeBuffer(true, 100);  // 100ms 超时，持续重试
+            // 如果获取失败但仍在运行，说明队列满了，继续等待消费者释放buffer
         }
+        
+        // 检查是否因为停止信号退出循环
+        if (!producer_running_) {
+            break;  // 退出线程
+        }
+        
+        // 现在 buffer 一定不为空，可以安全处理这一帧
         
         // 读取一帧数据
         if (!video.readFrameTo(*buffer)) {
@@ -651,7 +655,7 @@ void BufferManager::multiVideoProducerThread(int thread_id,
     
     // 主循环
     int loop_iterations = 0;
-    int skipped_frames = 0;  // 跳过的帧数（无法获取buffer或读取失败）
+    int skipped_frames = 0;  // 读取失败的帧数（仅统计视频文件读取错误）
     
     while (producer_running_) {
         loop_iterations++;
@@ -670,7 +674,6 @@ void BufferManager::multiVideoProducerThread(int thread_id,
                            thread_id, total_frames);
                     break;
                 }
-                
                 // 如果索引太大，尝试重置计数器（避免整数溢出）
                 int current = next_frame_index_.load();
                 if (current > total_frames * 2) {
@@ -685,28 +688,18 @@ void BufferManager::multiVideoProducerThread(int thread_id,
             }
         }
         
-        // 获取空闲 buffer
-        Buffer* buffer = acquireFreeBuffer(true, 100);  // 100ms 超时
-        if (buffer == nullptr) {
-            // 超时或被中断
-            if (!producer_running_) {
-                break;
-            }
-            // ❌ 不要回退帧索引！跳过这一帧，继续下一帧
-            // 回退会导致死循环，特别是当frame_index已经循环后
-            skipped_frames++;
-            continue;  // 直接continue，不回退，让帧索引自然前进
+        // 获取空闲 buffer - 循环等待直到成功（不跳帧，保证视频连续性）
+        Buffer* buffer = nullptr;
+        while (producer_running_ && buffer == nullptr) {
+            buffer = acquireFreeBuffer(true, 100);  // 100ms 超时，持续重试
+            // 如果获取失败但仍在运行，说明队列满了，继续等待消费者释放buffer
         }
         
-        // 跳转到指定帧并读取
-        // 验证：frame_index应该在有效范围内
-        if (frame_index < 0 || frame_index >= total_frames) {
-            printf("❌ Thread #%d: Invalid frame_index=%d (should be 0-%d)!\n",
-                   thread_id, frame_index, total_frames - 1);
-            recycleBuffer(buffer);
-            continue;
+        // 检查是否因为停止信号退出循环
+        if (!producer_running_) {
+            break;  // 退出线程
         }
-        
+       
         bool read_success = video.readFrameAt(frame_index, *buffer);
         if (!read_success) {
             skipped_frames++;

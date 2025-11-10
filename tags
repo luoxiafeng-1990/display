@@ -89,7 +89,7 @@ beginLoadFrameTiming	source/PerformanceMonitor.cpp	/^void PerformanceMonitor::be
 bin_PROGRAMS	Makefile.am	/^bin_PROGRAMS = display_test$/;"	m	language:Make
 bits_per_pixel_	include/LinuxFramebufferDevice.hpp	/^    int bits_per_pixel_;              \/\/ 每像素位数（可以是非整数字节，如12bit/;"	m	language:C++	class:LinuxFramebufferDevice	typeref:typename:int
 bits_per_pixel_	include/VideoFile.hpp	/^    int bits_per_pixel_;              \/\/ 每像素位数（可以是非整数字节，如12bit/;"	m	language:C++	class:VideoFile	typeref:typename:int
-buffer_manager_	include/PerformanceMonitor.hpp	/^    BufferManager* buffer_manager_;  \/\/ BufferManager 指针（用于 TASK_PRINT_WITH_BUFFERMA/;"	m	language:C++	class:PerformanceMonitor	typeref:typename:BufferManager *
+buffer_manager_	include/PerformanceMonitor.hpp	/^    std::weak_ptr<BufferManager> buffer_manager_;  \/\/ BufferManager 弱引用（用于 TASK_PR/;"	m	language:C++	class:PerformanceMonitor	typeref:typename:std::weak_ptr<BufferManager>
 buffer_size_	include/BufferManager.hpp	/^    size_t buffer_size_;                 \/\/ 每个 Buffer 的大小$/;"	m	language:C++	class:BufferManager	typeref:typename:size_t
 buffer_size_	include/LinuxFramebufferDevice.hpp	/^    size_t buffer_size_;              \/\/ 单个buffer大小（字节）$/;"	m	language:C++	class:LinuxFramebufferDevice	typeref:typename:size_t
 buffers_	include/BufferManager.hpp	/^    std::vector<Buffer> buffers_;        \/\/ Buffer 对象数组$/;"	m	language:C++	class:BufferManager	typeref:typename:std::vector<Buffer>
@@ -223,11 +223,10 @@ printFinalStats	source/PerformanceMonitor.cpp	/^void PerformanceMonitor::printFi
 printRealTimeStats	source/PerformanceMonitor.cpp	/^void PerformanceMonitor::printRealTimeStats() {$/;"	f	language:C++	class:PerformanceMonitor	typeref:typename:void	signature:()
 printStatistics	source/PerformanceMonitor.cpp	/^void PerformanceMonitor::printStatistics() const {$/;"	f	language:C++	class:PerformanceMonitor	typeref:typename:void	signature:() const
 print_usage	test.cpp	/^static void print_usage(const char* prog_name) {$/;"	f	language:C++	typeref:typename:void	file:	signature:(const char * prog_name)
-producer_running_	include/BufferManager.hpp	/^    std::atomic<bool> producer_running_;             \/\/ 线程运行标志$/;"	m	language:C++	class:BufferManager	typeref:typename:std::atomic<bool>
-producer_state_	include/BufferManager.hpp	/^    std::atomic<ProducerState> producer_state_;      \/\/ 线程状态$/;"	m	language:C++	class:BufferManager	typeref:typename:std::atomic<ProducerState>
-producer_thread_	include/BufferManager.hpp	/^    std::thread producer_thread_;                    \/\/ 生产者线程对象（单线程模式/;"	m	language:C++	class:BufferManager	typeref:typename:std::thread
-producer_thread_count_	include/BufferManager.hpp	/^    int producer_thread_count_;                      \/\/ 生产者线程数量$/;"	m	language:C++	class:BufferManager	typeref:typename:int
-producer_threads_	include/BufferManager.hpp	/^    std::vector<std::thread> producer_threads_;      \/\/ 生产者线程数组（多线程模式/;"	m	language:C++	class:BufferManager	typeref:typename:std::vector<std::thread>
+producer_running_	include/BufferManager.hpp	/^    std::atomic<bool> producer_running_;             \/\/ 线程运行标志（所有线程共享/;"	m	language:C++	class:BufferManager	typeref:typename:std::atomic<bool>
+producer_state_	include/BufferManager.hpp	/^    std::atomic<ProducerState> producer_state_;      \/\/ 线程状态（所有线程共享）$/;"	m	language:C++	class:BufferManager	typeref:typename:std::atomic<ProducerState>
+producer_thread_count_	include/BufferManager.hpp	/^    int producer_thread_count_;                      \/\/ 当前运行的生产者线程数量$/;"	m	language:C++	class:BufferManager	typeref:typename:int
+producer_threads_	include/BufferManager.hpp	/^    std::vector<std::thread> producer_threads_;      \/\/ 生产者线程数组（支持1个或多/;"	m	language:C++	class:BufferManager	typeref:typename:std::vector<std::thread>
 queryHardwareDisplayParameters	source/LinuxFramebufferDevice.cpp	/^bool LinuxFramebufferDevice::queryHardwareDisplayParameters() {$/;"	f	language:C++	class:LinuxFramebufferDevice	typeref:typename:bool	signature:()
 readFileHeader	source/VideoFile.cpp	/^ssize_t VideoFile::readFileHeader(unsigned char* header, size_t size) {$/;"	f	language:C++	class:VideoFile	typeref:typename:ssize_t	signature:(unsigned char * header,size_t size)
 readFrameAt	source/VideoFile.cpp	/^bool VideoFile::readFrameAt(int frame_index, Buffer& dest_buffer) {$/;"	f	language:C++	class:VideoFile	typeref:typename:bool	signature:(int frame_index,Buffer & dest_buffer)
@@ -245,7 +244,7 @@ seek	source/VideoFile.cpp	/^bool VideoFile::seek(int frame_index) {$/;"	f	langua
 seekToBegin	source/VideoFile.cpp	/^bool VideoFile::seekToBegin() {$/;"	f	language:C++	class:VideoFile	typeref:typename:bool	signature:()
 seekToEnd	source/VideoFile.cpp	/^bool VideoFile::seekToEnd() {$/;"	f	language:C++	class:VideoFile	typeref:typename:bool	signature:()
 setAutoStopAfterStats	source/PerformanceMonitor.cpp	/^void PerformanceMonitor::setAutoStopAfterStats(double stats_duration, void (*callback)(void*), v/;"	f	language:C++	class:PerformanceMonitor	typeref:typename:void	signature:(double stats_duration,void (* callback)(void *),void * user_data)
-setBufferManager	source/PerformanceMonitor.cpp	/^void PerformanceMonitor::setBufferManager(BufferManager* manager) {$/;"	f	language:C++	class:PerformanceMonitor	typeref:typename:void	signature:(BufferManager * manager)
+setBufferManager	source/PerformanceMonitor.cpp	/^void PerformanceMonitor::setBufferManager(std::shared_ptr<BufferManager> manager) {$/;"	f	language:C++	class:PerformanceMonitor	typeref:typename:void	signature:(std::shared_ptr<BufferManager> manager)
 setError	source/BufferManager.cpp	/^void BufferManager::setError(const std::string& error_msg) {$/;"	f	language:C++	class:BufferManager	typeref:typename:void	signature:(const std::string & error_msg)
 setOneShotTimer	source/PerformanceMonitor.cpp	/^void PerformanceMonitor::setOneShotTimer(double seconds) {$/;"	f	language:C++	class:PerformanceMonitor	typeref:typename:void	signature:(double seconds)
 setReportInterval	source/PerformanceMonitor.cpp	/^void PerformanceMonitor::setReportInterval(int interval_ms) {$/;"	f	language:C++	class:PerformanceMonitor	typeref:typename:void	signature:(int interval_ms)
@@ -260,6 +259,7 @@ start	source/PerformanceMonitor.cpp	/^void PerformanceMonitor::start() {$/;"	f	l
 startMultipleVideoProducers	source/BufferManager.cpp	/^bool BufferManager::startMultipleVideoProducers(int thread_count,$/;"	f	language:C++	class:BufferManager	typeref:typename:bool	signature:(int thread_count,const char * video_file_path,int width,int height,int bits_per_pixel,bool loop,ErrorCallback error_callback)
 startTimer	source/PerformanceMonitor.cpp	/^void PerformanceMonitor::startTimer() {$/;"	f	language:C++	class:PerformanceMonitor	typeref:typename:void	signature:()
 startVideoProducer	source/BufferManager.cpp	/^bool BufferManager::startVideoProducer(const char* video_file_path, $/;"	f	language:C++	class:BufferManager	typeref:typename:bool	signature:(const char * video_file_path,int width,int height,int bits_per_pixel,bool loop,ErrorCallback error_callback)
+startVideoProducerInternal	source/BufferManager.cpp	/^bool BufferManager::startVideoProducerInternal(int thread_count,$/;"	f	language:C++	class:BufferManager	typeref:typename:bool	signature:(int thread_count,const char * video_file_path,int width,int height,int bits_per_pixel,bool loop,ErrorCallback error_callback)
 start_time_	include/PerformanceMonitor.hpp	/^    std::chrono::steady_clock::time_point start_time_;$/;"	m	language:C++	class:PerformanceMonitor	typeref:typename:std::chrono::steady_clock::time_point
 stopTimer	source/PerformanceMonitor.cpp	/^void PerformanceMonitor::stopTimer() {$/;"	f	language:C++	class:PerformanceMonitor	typeref:typename:void	signature:()
 stopVideoProducer	source/BufferManager.cpp	/^void BufferManager::stopVideoProducer() {$/;"	f	language:C++	class:BufferManager	typeref:typename:void	signature:()
