@@ -6,7 +6,8 @@ display_test_SOURCES = test.cpp \
                        source/LinuxFramebufferDevice.cpp \
                        source/VideoFile.cpp \
                        source/PerformanceMonitor.cpp \
-                       source/BufferManager.cpp
+                       source/BufferManager.cpp \
+                       source/IoUringVideoReader.cpp
 
 AM_CPPFLAGS = -I$(top_srcdir)/include
 
@@ -16,5 +17,5 @@ else
 AM_CXXFLAGS = -O2 -std=c++17
 endif
 
-LDADD = -lpthread
+LDADD = -lpthread -luring
 

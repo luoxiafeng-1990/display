@@ -269,7 +269,7 @@ static int test_buffermanager_producer(const char* raw_video_path) {
     printf("   Buffer count: %d\n", display.getBufferCount());
     
     // 2. 创建 BufferManager（使用 shared_ptr 管理）
-    auto manager = std::make_shared<BufferManager>(40, frame_size, true);
+    auto manager = std::make_shared<BufferManager>(30, frame_size, true);
     
     printf("\n📦 BufferManager created with 40 buffers\n");
     
@@ -334,7 +334,7 @@ static int test_buffermanager_producer(const char* raw_video_path) {
         Buffer* filled_buffer = manager->acquireFilledBuffer(true, 100);
         if (filled_buffer == nullptr) {
             // 超时，继续等待
-            printf("🔄 Producer thread no valid buffer, waiting for 100ms...\n");
+            printf("🔄 Consumer got no buffer, waiting for 100ms...\n");
             continue;
         }
         
@@ -388,6 +388,157 @@ static int test_buffermanager_producer(const char* raw_video_path) {
 }
 
 /**
+ * 测试4：BufferManager io_uring 生产者线程测试
+ * 
+ * 功能：
+ * - 使用 BufferManager 管理 buffer 池
+ * - 使用 io_uring 进行高性能异步 I/O
+ * - 自动启动多个生产者线程，使用零拷贝技术从视频文件读取数据
+ * - 主线程作为消费者，获取 buffer 并显示到屏幕
+ * - 展示 io_uring 异步 I/O 的性能优势
+ */
+static int test_buffermanager_iouring(const char* raw_video_path) {
+    printf("\n═══════════════════════════════════════════════════════\n");
+    printf("  Test: BufferManager io_uring Producer Thread\n");
+    printf("═══════════════════════════════════════════════════════\n\n");
+    
+    // 1. 初始化显示设备
+    LinuxFramebufferDevice display;
+    if (!display.initialize(0)) {
+        return -1;
+    }
+    
+    // 计算帧大小
+    size_t frame_size = (size_t)display.getWidth() * display.getHeight() * 
+                        (display.getBitsPerPixel() / 8);
+    
+    printf("📺 Display initialized:\n");
+    printf("   Resolution: %dx%d\n", display.getWidth(), display.getHeight());
+    printf("   Bits per pixel: %d\n", display.getBitsPerPixel());
+    printf("   Frame size: %zu bytes (%.2f MB)\n", frame_size, frame_size / (1024.0 * 1024.0));
+    printf("   Buffer count: %d\n", display.getBufferCount());
+    
+    // 2. 创建 BufferManager（使用 shared_ptr 管理）
+    auto manager = std::make_shared<BufferManager>(40, frame_size, true);
+    
+    printf("\n📦 BufferManager created with 40 buffers\n");
+    
+    // 3. 创建性能监控器
+    PerformanceMonitor monitor;
+    monitor.start();
+    
+    // 配置定时器 - 使用新的任务类型打印 BufferManager 状态
+    monitor.setTimerTask(TASK_PRINT_WITH_BUFFERMANAGER);
+    monitor.setBufferManager(manager);  // ✅ 传递 shared_ptr（PerformanceMonitor 内部用 weak_ptr 观察）
+    monitor.setTimerInterval(1.0, 10.0);  // 每1秒统计，延迟10秒
+    monitor.startTimer();
+    
+    // 不设置自动停止，让用户用 Ctrl+C 手动停止（io_uring模式性能测试需要更长时间）
+    // monitor.setAutoStopAfterStats(30.0, auto_stop_callback, (void*)&g_running);
+    
+    // 4. 启动 io_uring 视频生产者线程
+    printf("\n🎬 Starting io_uring video producer threads...\n");
+    
+    // io_uring的优势在于异步I/O，不需要多线程！
+    // 多线程反而会造成随机跳跃读取，降低性能
+    int producer_thread_count = 1;  // 使用1个生产者线程（顺序读取）
+    printf("   Using %d io_uring producer thread for sequential async reading\n", producer_thread_count);
+    
+    bool started = manager->startMultipleVideoProducersIoUring(
+        producer_thread_count,  // 线程数量
+        raw_video_path,
+        display.getWidth(),
+        display.getHeight(),
+        display.getBitsPerPixel(),
+        true,  // 循环播放
+        [](const std::string& error) {
+            // 错误回调
+            printf("\n❌ Producer Error: %s\n", error.c_str());
+            g_running = false;
+        }
+    );
+    
+    if (!started) {
+        printf("❌ Failed to start io_uring video producer threads\n");
+        return -1;
+    }
+    
+    printf("✅ io_uring video producer threads started\n");
+    printf("\n🎥 Starting display loop (Ctrl+C to stop)...\n\n");
+    
+    // 注册信号处理
+    signal(SIGINT, signal_handler);
+    
+    // 5. 消费者循环：从 BufferManager 获取 buffer 并显示
+    int current_display_buffer = 0;
+    int frame_count = 0;
+    
+    while (g_running) {
+        // 检查生产者状态
+        auto state = manager->getProducerState();
+        if (state == BufferManager::ProducerState::ERROR) {
+            printf("❌ Producer encountered an error: %s\n", 
+                   manager->getLastProducerError().c_str());
+            break;
+        }
+        
+        // 获取一个已填充的 buffer（阻塞，100ms超时）
+        Buffer* filled_buffer = manager->acquireFilledBuffer(true, 100);
+        if (filled_buffer == nullptr) {
+            // 超时，继续等待
+            continue;
+        }
+        
+        // 开始加载帧计时（从buffer拷贝到display）
+        monitor.beginLoadFrameTiming();
+        
+        // 获取 display 的 buffer
+        Buffer& display_buffer = display.getBuffer(current_display_buffer);
+        
+        // 将数据从 BufferManager 的 buffer 拷贝到 display 的 buffer
+        if (!display_buffer.copyFrom(filled_buffer->data(), filled_buffer->size())) {
+            printf("⚠️  Warning: Failed to copy buffer data\n");
+        }
+        
+        monitor.endLoadFrameTiming();
+        
+        // 显示帧
+        monitor.beginDisplayFrameTiming();
+        // 等待垂直同步
+        display.waitVerticalSync();
+        display.displayBuffer(current_display_buffer);
+        monitor.endDisplayFrameTiming();
+        
+        // 回收 buffer 到空闲队列
+        manager->recycleBuffer(filled_buffer);
+        
+        // 切换到下一个 display buffer
+        current_display_buffer = (current_display_buffer + 1) % display.getBufferCount();
+        frame_count++;
+    }
+    
+    // 6. 停止生产者线程
+    printf("\n\n🛑 Stopping io_uring video producer threads...\n");
+    manager->stopVideoProducer();
+    
+    // 停止性能监控定时器
+    monitor.stopTimer();
+    
+    printf("🛑 Playback stopped\n\n");
+    
+    // 7. 打印最终统计
+    monitor.printFinalStats();
+    printf("   Total frames displayed: %d\n", frame_count);
+    printf("   Final buffer states:\n");
+    printf("     - Free buffers: %d\n", manager->getFreeBufferCount());
+    printf("     - Filled buffers: %d\n", manager->getFilledBufferCount());
+    
+    printf("\n✅ Test completed successfully\n");
+    
+    return 0;
+}
+
+/**
  * 打印使用说明
  */
 static void print_usage(const char* prog_name) {
@@ -398,17 +549,20 @@ static void print_usage(const char* prog_name) {
     printf("                      loop:       4-frame loop display\n");
     printf("                      sequential: Sequential playback (play once)\n");
     printf("                      producer:   BufferManager producer thread test\n");
+    printf("                      iouring:    BufferManager io_uring producer test (high-performance)\n");
     printf("\n");
     printf("Examples:\n");
     printf("  %s video.raw\n", prog_name);
     printf("  %s -m loop video.raw\n", prog_name);
     printf("  %s -m sequential video.raw\n", prog_name);
     printf("  %s -m producer video.raw\n", prog_name);
+    printf("  %s -m iouring video.raw\n", prog_name);
     printf("\n");
     printf("Test Modes Description:\n");
     printf("  loop:       Load N frames into framebuffer and loop display them\n");
     printf("  sequential: Read and display frames sequentially from file\n");
     printf("  producer:   Use BufferManager with producer thread (multi-threaded)\n");
+    printf("  iouring:    Use BufferManager with io_uring async I/O (zero-copy, high-performance)\n");
     printf("\n");
     printf("Note:\n");
     printf("  - Raw video file must match framebuffer resolution\n");
@@ -456,6 +610,8 @@ int main(int argc, char* argv[]) {
         result = test_sequential_playback(raw_video_path);
     } else if (strcmp(mode, "producer") == 0) {
         result = test_buffermanager_producer(raw_video_path);
+    } else if (strcmp(mode, "iouring") == 0) {
+        result = test_buffermanager_iouring(raw_video_path);
     } else {
         printf("Error: Unknown mode '%s'\n\n", mode);
         print_usage(argv[0]);

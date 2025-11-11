@@ -19,11 +19,9 @@ class BufferManager;
  * 用户可以通过 setTimerTask() 选择定时器执行哪种任务。
  */
 enum TimerTaskType {
-    TASK_PRINT_FULL_STATS,      // 完整统计（增量 + 累计）
-    TASK_PRINT_FPS_ONLY,        // 只打印FPS（单行）
-    TASK_PRINT_SIMPLE,          // 简化统计（单行，包含帧数和FPS）
-    TASK_PRINT_FRAME_COUNT,     // 只打印帧数
-    TASK_PRINT_ELAPSED_TIME,    // 只打印运行时间
+    TASK_PRINT_FULL_STATS,         // 完整统计（加载、解码、显示所有信息）
+    TASK_PRINT_LOAD_FRAME,         // 只显示加载帧信息
+    TASK_PRINT_DISPLAY_FRAME,      // 只显示显示帧信息
     TASK_PRINT_WITH_BUFFERMANAGER, // 完整统计 + BufferManager 状态
 };
 
@@ -130,29 +128,19 @@ private:
     void timerThreadFunction();
     
     /**
-     * 执行定时器任务：完整统计
+     * 执行定时器任务：完整统计（加载、解码、显示所有信息）
      */
     void executeTaskFullStats(double interval, int load_delta, int decode_delta, int display_delta);
     
     /**
-     * 执行定时器任务：只打印FPS
+     * 执行定时器任务：只显示加载帧信息
      */
-    void executeTaskFpsOnly(double interval, int display_delta);
+    void executeTaskLoadFrame(double interval, int load_delta);
     
     /**
-     * 执行定时器任务：简化统计
+     * 执行定时器任务：只显示显示帧信息
      */
-    void executeTaskSimple(double interval, int display_delta);
-    
-    /**
-     * 执行定时器任务：只打印帧数
-     */
-    void executeTaskFrameCount(int display_delta);
-    
-    /**
-     * 执行定时器任务：只打印运行时间
-     */
-    void executeTaskElapsedTime();
+    void executeTaskDisplayFrame(double interval, int display_delta);
     
     /**
      * 执行定时器任务：完整统计 + BufferManager 状态
@@ -329,11 +317,9 @@ public:
      * @param task 任务类型枚举值
      * 
      * 可选任务类型：
-     * - TASK_PRINT_FULL_STATS:         完整统计（增量 + 累计，多行）
-     * - TASK_PRINT_FPS_ONLY:           只打印FPS（单行）
-     * - TASK_PRINT_SIMPLE:             简化统计（单行）
-     * - TASK_PRINT_FRAME_COUNT:        只打印帧数
-     * - TASK_PRINT_ELAPSED_TIME:       只打印运行时间
+     * - TASK_PRINT_FULL_STATS:         完整统计（加载、解码、显示所有信息）
+     * - TASK_PRINT_LOAD_FRAME:         只显示加载帧信息（帧数、FPS、平均加载时间）
+     * - TASK_PRINT_DISPLAY_FRAME:      只显示显示帧信息（帧数、FPS、平均显示时间）
      * - TASK_PRINT_WITH_BUFFERMANAGER: 完整统计 + BufferManager 状态
      */
     void setTimerTask(TimerTaskType task);

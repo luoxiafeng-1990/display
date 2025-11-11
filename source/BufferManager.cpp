@@ -1,5 +1,7 @@
 #include "../include/BufferManager.hpp"
 #include "../include/VideoFile.hpp"
+#include "../include/IoUringVideoReader.hpp"
+#include "../include/PerformanceMonitor.hpp"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +12,7 @@
 #include <sys/ioctl.h>
 #include <chrono>
 #include <stdexcept>
+#include <algorithm>
 
 // CMA/DMA-BUF 相关头文件（如果系统支持）
 #ifdef __linux__
@@ -159,17 +162,13 @@ void BufferManager::submitFilledBuffer(Buffer* buffer) {
         return;
     }
     
-    int queue_size_before = 0;
-    int queue_size_after = 0;
-    
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        queue_size_before = filled_queue_.size();
         filled_queue_.push(buffer);
-        queue_size_after = filled_queue_.size();
+        
+        // ✅ 在锁内通知，避免丢失唤醒
+        filled_cv_.notify_all();
     }
-    // 通知等待的消费者
-    filled_cv_.notify_one();
 }
 
 // ============ 消费者接口 ============
@@ -177,21 +176,12 @@ void BufferManager::submitFilledBuffer(Buffer* buffer) {
 Buffer* BufferManager::acquireFilledBuffer(bool blocking, int timeout_ms) {
     std::unique_lock<std::mutex> lock(mutex_);
     
-    // 调试：记录队列状态
-    int queue_size = filled_queue_.size();
-    static int acquire_attempts = 0;
-    acquire_attempts++;
-    
     if (blocking) {
         if (timeout_ms > 0) {
             // 带超时的等待
             auto timeout = std::chrono::milliseconds(timeout_ms);
             if (!filled_cv_.wait_for(lock, timeout, [this] { return !filled_queue_.empty(); })) {
                 // 超时
-                if (acquire_attempts % 50 == 0) {
-                    printf("   [DEBUG] acquireFilledBuffer timeout (attempt %d, queue_size=%d)\n",
-                           acquire_attempts, filled_queue_.size());
-                }
                 return nullptr;
             }
         } else {
@@ -221,10 +211,11 @@ void BufferManager::recycleBuffer(Buffer* buffer) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         free_queue_.push(buffer);
-    }
-    
-    // 通知等待的生产者
-    free_cv_.notify_one();
+        
+        // ✅ 关键修复：在锁内通知，避免丢失唤醒
+        // 通知所有等待的生产者（在多线程生产者场景下更高效）
+        free_cv_.notify_all();
+    }  // 锁在这里释放，此时通知已经发出
 }
 
 // ============ 查询接口 ============
@@ -400,16 +391,11 @@ bool BufferManager::startVideoProducerInternal(int thread_count,
     producer_threads_.reserve(thread_count);
     for (int i = 0; i < thread_count; i++) {
         try {
-            if (thread_count == 1) {
-                // 单线程模式：使用简单的 videoProducerThread
-                producer_threads_.emplace_back(&BufferManager::videoProducerThread, this,
-                                              video_file_path, width, height, bits_per_pixel, loop);
-            } else {
-                // 多线程模式：使用协调的 multiVideoProducerThread
-                producer_threads_.emplace_back(&BufferManager::multiVideoProducerThread, this,
+           
+            // 多线程模式：使用协调的 multiVideoProducerThread
+            producer_threads_.emplace_back(&BufferManager::multiVideoProducerThread, this,
                                               i, video_file_path, width, height, 
                                               bits_per_pixel, loop, total_frames);
-            }
             
             if (thread_count == 1) {
                 printf("✅ Video producer thread started\n");
@@ -472,6 +458,15 @@ void BufferManager::stopVideoProducer() {
     }
     producer_threads_.clear();
     
+    // 清理 io_uring readers（如果有）
+    if (!iouring_readers_.empty()) {
+        printf("🧹 Cleaning up %zu IoUringVideoReader(s)...\n", iouring_readers_.size());
+        for (void* r : iouring_readers_) {
+            delete static_cast<IoUringVideoReader*>(r);
+        }
+        iouring_readers_.clear();
+    }
+    
     producer_state_ = ProducerState::STOPPED;
     printf("✅ Video producer thread(s) stopped (count: %d)\n", producer_thread_count_);
     producer_thread_count_ = 0;
@@ -490,114 +485,6 @@ bool BufferManager::isProducerRunning() const {
     return producer_running_.load();
 }
 
-// ============ 生产者线程函数 ============
-
-void BufferManager::videoProducerThread(const char* video_file_path, 
-                                       int width, int height, int bits_per_pixel,
-                                       bool loop) {
-    printf("\n🎥 Video producer thread started (TID: %ld)\n", 
-           (long)pthread_self());
-    
-    // 打开视频文件
-    VideoFile video;
-    if (!video.openRaw(video_file_path, width, height, bits_per_pixel)) {
-        std::string error_msg = std::string("Failed to open video file: ") + video_file_path;
-        setError(error_msg);
-        printf("❌ %s\n", error_msg.c_str());
-        producer_state_ = ProducerState::ERROR;
-        producer_running_ = false;
-        return;
-    }
-    
-    printf("   Video opened successfully\n");
-    printf("   Total frames: %d\n", video.getTotalFrames());
-    printf("   Frame size: %zu bytes\n", video.getFrameSize());
-    
-    // 检查帧大小是否匹配
-    if (video.getFrameSize() != buffer_size_) {
-        char error_msg[256];
-        snprintf(error_msg, sizeof(error_msg),
-                "Frame size mismatch: video=%zu, buffer=%zu",
-                video.getFrameSize(), buffer_size_);
-        setError(error_msg);
-        printf("❌ %s\n", error_msg);
-        producer_state_ = ProducerState::ERROR;
-        producer_running_ = false;
-        return;
-    }
-    
-    int frame_count = 0;
-    
-    // 主循环
-    while (producer_running_) {
-        // 获取空闲 buffer - 循环等待直到成功（不跳帧，保证视频连续性）
-        Buffer* buffer = nullptr;
-        while (producer_running_ && buffer == nullptr) {
-            buffer = acquireFreeBuffer(true, 100);  // 100ms 超时，持续重试
-            // 如果获取失败但仍在运行，说明队列满了，继续等待消费者释放buffer
-        }
-        
-        // 检查是否因为停止信号退出循环
-        if (!producer_running_) {
-            break;  // 退出线程
-        }
-        
-        // 现在 buffer 一定不为空，可以安全处理这一帧
-        
-        // 读取一帧数据
-        if (!video.readFrameTo(*buffer)) {
-            // 读取失败，检查是否到达文件末尾
-            if (video.isAtEnd()) {
-                if (loop) {
-                    // 循环模式：回到文件开头
-                    printf("   Reached end of file, looping back...\n");
-                    if (!video.seekToBegin()) {
-                        setError("Failed to seek to beginning");
-                        producer_state_ = ProducerState::ERROR;
-                        recycleBuffer(buffer);  // 归还 buffer
-                        break;
-                    }
-                    // 重新读取
-                    if (!video.readFrameTo(*buffer)) {
-                        setError("Failed to read frame after seeking");
-                        producer_state_ = ProducerState::ERROR;
-                        recycleBuffer(buffer);
-                        break;
-                    }
-                } else {
-                    // 非循环模式：正常结束
-                    printf("   Reached end of file, stopping...\n");
-                    recycleBuffer(buffer);  // 归还 buffer
-                    producer_running_ = false;
-                    break;
-                }
-            } else {
-                // 读取错误
-                setError("Failed to read frame from video file");
-                producer_state_ = ProducerState::ERROR;
-                recycleBuffer(buffer);
-                break;
-            }
-        }
-        
-        // 将填充好的 buffer 提交到就绪队列
-        submitFilledBuffer(buffer);
-        
-        frame_count++;
-        if (frame_count % 100 == 0) {
-            printf("   Produced %d frames (current: %d/%d)\n", 
-                   frame_count, video.getCurrentFrameIndex(), video.getTotalFrames());
-        }
-    }
-    
-    printf("\n✅ Video producer thread exiting\n");
-    printf("   Total frames produced: %d\n", frame_count);
-    
-    if (producer_state_ != ProducerState::ERROR) {
-        producer_state_ = ProducerState::STOPPED;
-    }
-    producer_running_ = false;
-}
 
 // ============ 错误处理辅助函数 ============
 
@@ -636,6 +523,23 @@ bool BufferManager::startMultipleVideoProducers(int thread_count,
 
 // ============ 多生产者线程函数 ============
 
+namespace {
+    // 定时器回调数据结构
+    struct ThreadTimerData {
+        int thread_id;
+        PerformanceMonitor* monitor;
+    };
+
+    // 定时器回调函数（每1秒打印线程统计）
+    void threadTimerCallback(void* data) {
+        ThreadTimerData* stats = static_cast<ThreadTimerData*>(data);
+        printf("🔄 [Thread #%d] Loaded %d frames (avg FPS: %.2f)\n",
+               stats->thread_id,
+               stats->monitor->getLoadedFrames(),
+               stats->monitor->getAverageLoadFPS());
+    }
+}
+
 void BufferManager::multiVideoProducerThread(int thread_id,
                                             const char* video_file_path, 
                                             int width, int height, int bits_per_pixel,
@@ -653,37 +557,41 @@ void BufferManager::multiVideoProducerThread(int thread_id,
     
     int frames_produced = 0;
     
+    printf("🚀 Thread #%d: Using single-frame mode\n", thread_id);
+    
     // 主循环
     int loop_iterations = 0;
     int skipped_frames = 0;  // 读取失败的帧数（仅统计视频文件读取错误）
+    int consecutive_failures = 0;  // 连续失败计数
     
+    // 创建性能监控器并配置定时器
+    PerformanceMonitor monitor;
+    ThreadTimerData timer_data = { thread_id, &monitor };
+    
+    monitor.setTimerCallback(threadTimerCallback, &timer_data);
+    monitor.setTimerInterval(1.0);  // 每1秒触发一次
+    monitor.startTimer();           // 启动定时器（会自动启动监控）
     while (producer_running_) {
         loop_iterations++;
         
-        // 原子地获取下一个要读取的帧索引
+        // 原子地获取下一个帧号
         int frame_index = next_frame_index_.fetch_add(1);
         
-        // 检查是否超出范围
+        // 处理循环模式和文件边界
         if (frame_index >= total_frames) {
             if (loop) {
-                // 循环模式：重置索引（使用模运算，更简单可靠）
-                if (total_frames > 0) {
-                    frame_index = frame_index % total_frames;
-                } else {
-                    printf("❌ Thread #%d: total_frames is %d, cannot loop!\n", 
-                           thread_id, total_frames);
-                    break;
-                }
-                // 如果索引太大，尝试重置计数器（避免整数溢出）
+                // 循环模式：归一化到 0-total_frames 范围
+                frame_index = frame_index % total_frames;
+                
+                // 尝试重置计数器，避免整数溢出
                 int current = next_frame_index_.load();
                 if (current > total_frames * 2) {
-                    // 重置到合理范围
                     int expected = current;
                     int new_value = frame_index + 1;
                     next_frame_index_.compare_exchange_strong(expected, new_value);
                 }
             } else {
-                // 非循环模式：退出
+                // 非循环模式：没有更多帧可读
                 break;
             }
         }
@@ -693,14 +601,22 @@ void BufferManager::multiVideoProducerThread(int thread_id,
         while (producer_running_ && buffer == nullptr) {
             buffer = acquireFreeBuffer(true, 100);  // 100ms 超时，持续重试
             // 如果获取失败但仍在运行，说明队列满了，继续等待消费者释放buffer
+            if (buffer == nullptr && producer_running_) {
+                printf("   [Thread #%d] Failed to acquire free buffer, waiting for 100ms...\n", thread_id);
+            }
         }
         
         // 检查是否因为停止信号退出循环
         if (!producer_running_) {
-            break;  // 退出线程
+            printf("   [Producer] Stopped, exiting...\n");
+            break;
         }
-       
+        
+        // 开始计时
+        monitor.beginLoadFrameTiming();
         bool read_success = video.readFrameAt(frame_index, *buffer);
+        monitor.endLoadFrameTiming();
+        
         if (!read_success) {
             skipped_frames++;
             printf("⚠️  Thread #%d: Failed to read frame %d/%d\n", 
@@ -709,7 +625,6 @@ void BufferManager::multiVideoProducerThread(int thread_id,
             recycleBuffer(buffer);  // 归还 buffer
             
             // 连续失败检测
-            static thread_local int consecutive_failures = 0;
             consecutive_failures++;
             if (consecutive_failures > 5) {
                 char error_msg[256];
@@ -720,16 +635,165 @@ void BufferManager::multiVideoProducerThread(int thread_id,
                 producer_state_ = ProducerState::ERROR;
                 break;
             }
-            continue;
+            continue;  // 继续下一帧
         }
         
         // 重置失败计数
-        static thread_local int consecutive_failures = 0;
         consecutive_failures = 0;
-        
         // 将填充好的 buffer 提交到就绪队列
         submitFilledBuffer(buffer);
         frames_produced++;
+        
+        // 如果出错，退出主循环
+        if (producer_state_ == ProducerState::ERROR) {
+            break;
+        }
+    }  // end of while loop
+    
+    // 停止定时器
+    monitor.stopTimer();
+    
+    video.close();
+    
+    // 打印最终统计
+    printf("🏁 Thread #%d finished:\n", thread_id);
+    printf("   📊 Produced %d frames, skipped %d frames\n", frames_produced, skipped_frames);
+    printf("   📊 Total loaded frames: %d\n", monitor.getLoadedFrames());
+    printf("   📊 Average load FPS: %.2f\n", monitor.getAverageLoadFPS());
+    printf("   📊 Total time: %.2f seconds\n", monitor.getTotalTime());
+    if (monitor.getLoadedFrames() > 0) {
+        printf("   📊 Average time per frame: %.2f ms\n", 
+               (monitor.getTotalTime() * 1000.0) / monitor.getLoadedFrames());
     }
+}
+
+// ============ io_uring 生产者接口实现 ============
+
+bool BufferManager::startMultipleVideoProducersIoUring(int thread_count,
+                                                       const char* video_file_path, 
+                                                       int width, int height, int bits_per_pixel,
+                                                       bool loop,
+                                                       ErrorCallback error_callback) {
+    // 检查是否已经在运行
+    if (producer_running_) {
+        printf("⚠️  Warning: Producer thread(s) already running\n");
+        return false;
+    }
+    
+    if (thread_count < 1) {
+        printf("❌ ERROR: Thread count must be >= 1\n");
+        return false;
+    }
+    
+    printf("\n🚀 Starting %d io_uring video producer thread(s)...\n", thread_count);
+    printf("   Video file: %s\n", video_file_path);
+    printf("   Resolution: %dx%d\n", width, height);
+    printf("   Bits per pixel: %d\n", bits_per_pixel);
+    printf("   Loop mode: %s\n", loop ? "enabled" : "disabled");
+    printf("   I/O Mode: io_uring (async, zero-copy)\n");
+    
+    // 保存错误回调
+    error_callback_ = error_callback;
+    
+    // 首先创建一个临时reader来获取总帧数和验证文件
+    IoUringVideoReader* temp_reader = new IoUringVideoReader(video_file_path, width, height, 
+                                                              bits_per_pixel, 32);
+    
+    if (!temp_reader->isInitialized()) {
+        printf("❌ ERROR: Failed to initialize IoUringVideoReader\n");
+        delete temp_reader;
+        return false;
+    }
+    
+    int total_frames = temp_reader->getTotalFrames();
+    printf("   Total frames: %d\n", total_frames);
+    
+    // 为每个线程分配**连续的帧块**（关键优化：顺序读取避免随机I/O）
+    // 例如：Thread #0: 0-197, Thread #1: 198-394, Thread #2: 395-591
+    std::vector<std::vector<int>> thread_frames(thread_count);
+    int frames_per_thread = (total_frames + thread_count - 1) / thread_count;
+    
+    for (int t = 0; t < thread_count; t++) {
+        int start = t * frames_per_thread;
+        int end = std::min(start + frames_per_thread, total_frames);
+        
+        for (int i = start; i < end; i++) {
+            thread_frames[t].push_back(i);
+        }
+        
+        printf("   Thread #%d will read frames %d-%d (%d frames)\n", 
+               t, start, end - 1, end - start);
+    }
+    
+    // 不再需要临时reader
+    delete temp_reader;
+    
+    // 重置状态
+    producer_running_ = true;
+    producer_state_ = ProducerState::RUNNING;
+    producer_thread_count_ = thread_count;
+    last_error_.clear();
+    
+    // 为每个线程创建独立的IoUringVideoReader并启动线程
+    // 注意：每个线程需要自己的reader，因为io_uring ring不是线程安全的
+    producer_threads_.reserve(thread_count);
+    iouring_readers_.clear();  // 清空之前的readers
+    iouring_readers_.reserve(thread_count);
+    
+    for (int i = 0; i < thread_count; i++) {
+        // 为每个线程创建独立的reader
+        IoUringVideoReader* reader = new IoUringVideoReader(video_file_path, width, height, 
+                                                             bits_per_pixel, 32);
+        if (!reader->isInitialized()) {
+            printf("❌ ERROR: Failed to initialize IoUringVideoReader for thread #%d\n", i);
+            // 清理已创建的readers
+            for (void* r : iouring_readers_) {
+                delete static_cast<IoUringVideoReader*>(r);
+            }
+            iouring_readers_.clear();
+            producer_running_ = false;
+            producer_state_ = ProducerState::ERROR;
+            return false;
+        }
+        
+        // 保存reader指针（转换为void*以避免头文件依赖）
+        iouring_readers_.push_back(static_cast<void*>(reader));
+        
+        try {
+            producer_threads_.emplace_back(
+                &IoUringVideoReader::asyncProducerThread, 
+                reader,                      // 每个线程有自己的reader
+                i,                          // thread_id
+                this,                       // BufferManager*
+                thread_frames[i],           // frame_indices - 按值传递（拷贝）
+                std::ref(producer_running_),// running flag
+                loop                        // loop
+            );
+            printf("   ✅ io_uring producer thread #%d started (%zu frames)\n", 
+                   i, thread_frames[i].size());
+        } catch (const std::exception& e) {
+            printf("❌ ERROR: Failed to start producer thread #%d: %s\n", i, e.what());
+            producer_running_ = false;
+            for (auto& thread : producer_threads_) {
+                if (thread.joinable()) {
+                    thread.join();
+                }
+            }
+            producer_threads_.clear();
+            producer_state_ = ProducerState::ERROR;
+            // 清理所有readers
+            for (void* r : iouring_readers_) {
+                delete static_cast<IoUringVideoReader*>(r);
+            }
+            iouring_readers_.clear();
+            return false;
+        }
+    }
+    
+    printf("✅ All %d io_uring video producer threads started successfully\n", thread_count);
+    
+    // readers会在stopVideoProducer()中清理
+    
+    return true;
 }
 

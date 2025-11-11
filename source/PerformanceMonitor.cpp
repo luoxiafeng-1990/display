@@ -378,17 +378,11 @@ void PerformanceMonitor::setTimerTask(TimerTaskType task) {
         case TASK_PRINT_FULL_STATS:
             task_name = "完整统计";
             break;
-        case TASK_PRINT_FPS_ONLY:
-            task_name = "只显示FPS";
+        case TASK_PRINT_LOAD_FRAME:
+            task_name = "加载帧统计";
             break;
-        case TASK_PRINT_SIMPLE:
-            task_name = "简化统计";
-            break;
-        case TASK_PRINT_FRAME_COUNT:
-            task_name = "只显示帧数";
-            break;
-        case TASK_PRINT_ELAPSED_TIME:
-            task_name = "只显示运行时间";
+        case TASK_PRINT_DISPLAY_FRAME:
+            task_name = "显示帧统计";
             break;
         case TASK_PRINT_WITH_BUFFERMANAGER:
             task_name = "完整统计 + BufferManager 状态";
@@ -438,6 +432,11 @@ void PerformanceMonitor::startTimer() {
     if (timer_running_) {
         printf("⚠️  Timer is already running\n");
         return;
+    }
+    
+    // 【自动启动性能监控】如果尚未启动，自动调用 start()
+    if (!is_started_) {
+        start();
     }
     
     // 记录基准值（用于最终统计）
@@ -596,20 +595,12 @@ void PerformanceMonitor::timerThreadFunction() {
                     executeTaskFullStats(actual_interval, loaded_delta, decoded_delta, displayed_delta);
                     break;
                     
-                case TASK_PRINT_FPS_ONLY:
-                    executeTaskFpsOnly(actual_interval, displayed_delta);
+                case TASK_PRINT_LOAD_FRAME:
+                    executeTaskLoadFrame(actual_interval, loaded_delta);
                     break;
                     
-                case TASK_PRINT_SIMPLE:
-                    executeTaskSimple(actual_interval, displayed_delta);
-                    break;
-                    
-                case TASK_PRINT_FRAME_COUNT:
-                    executeTaskFrameCount(displayed_delta);
-                    break;
-                    
-                case TASK_PRINT_ELAPSED_TIME:
-                    executeTaskElapsedTime();
+                case TASK_PRINT_DISPLAY_FRAME:
+                    executeTaskDisplayFrame(actual_interval, displayed_delta);
                     break;
                     
                 case TASK_PRINT_WITH_BUFFERMANAGER:
@@ -683,58 +674,59 @@ void PerformanceMonitor::executeTaskFullStats(double interval, int load_delta, i
     printf("\n");
 }
 
-void PerformanceMonitor::executeTaskFpsOnly(double interval, int display_delta) {
+void PerformanceMonitor::executeTaskLoadFrame(double interval, int load_delta) {
     if (!is_started_) {
         return;
     }
     
-    // 计算总运行时间（从定时器实际开始统计的时间点算起，跳过延迟）
+    // 计算加载帧的FPS
+    double load_fps = (interval > 0) ? (load_delta / interval) : 0.0;
+    
+    // 计算从定时器启动开始的累计加载帧数
+    int cumulative_loaded = frames_loaded_ - timer_start_frames_loaded_;
+    
+    // 计算总运行时间
     auto now = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed = now - timer_real_start_time_;
     double total_time = elapsed.count();
     
+    // 计算平均每帧加载时间
+    double avg_time_per_frame = 0.0;
+    if (load_delta > 0 && total_load_time_us_ > 0) {
+        // 注意：total_load_time_us_ 是累计的，所以我们需要计算平均值
+        avg_time_per_frame = (double)total_load_time_us_ / frames_loaded_ / 1000.0;  // 转换为毫秒
+    }
+    
+    // 打印加载帧统计信息
+    printf("📥 [%.1fs] 加载帧: %d 帧 (%.1f fps) | 累计: %d 帧 | 平均: %.2f ms/帧\n",
+           total_time, load_delta, load_fps, cumulative_loaded, avg_time_per_frame);
+}
+
+void PerformanceMonitor::executeTaskDisplayFrame(double interval, int display_delta) {
+    if (!is_started_) {
+        return;
+    }
+    
+    // 计算显示帧的FPS
     double display_fps = (interval > 0) ? (display_delta / interval) : 0.0;
-    printf("⏱️  [%.1fs] Display: %.1f ops/s\n", total_time, display_fps);
-}
-
-void PerformanceMonitor::executeTaskSimple(double interval, int display_delta) {
-    if (!is_started_) {
-        return;
-    }
     
-    // 计算总运行时间（从定时器实际开始统计的时间点算起，跳过延迟）
+    // 计算从定时器启动开始的累计显示帧数
+    int cumulative_displayed = frames_displayed_ - timer_start_frames_displayed_;
+    
+    // 计算总运行时间
     auto now = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed = now - timer_real_start_time_;
     double total_time = elapsed.count();
     
-    double display_fps = (interval > 0) ? (display_delta / interval) : 0.0;
-    printf("📊 [%.1fs] %d ops | %.1f ops/s\n", 
-           total_time, display_delta, display_fps);
-}
-
-void PerformanceMonitor::executeTaskFrameCount(int display_delta) {
-    if (!is_started_) {
-        return;
+    // 计算平均每帧显示时间
+    double avg_time_per_frame = 0.0;
+    if (display_delta > 0 && total_display_time_us_ > 0) {
+        avg_time_per_frame = (double)total_display_time_us_ / frames_displayed_ / 1000.0;  // 转换为毫秒
     }
     
-    int cumulative_displayed = frames_displayed_ - timer_start_frames_displayed_;
-    printf("📺 过去 %.1f 秒: %d 次操作 | 累计: %d 次\n", 
-           timer_interval_seconds_, display_delta, cumulative_displayed);
-}
-
-void PerformanceMonitor::executeTaskElapsedTime() {
-    if (!is_started_) {
-        return;
-    }
-    
-    // 计算总运行时间（从定时器实际开始统计的时间点算起，跳过延迟）
-    auto now = std::chrono::steady_clock::now();
-    std::chrono::duration<double> elapsed = now - timer_real_start_time_;
-    double total_time = elapsed.count();
-    
-    int cumulative_displayed = frames_displayed_ - timer_start_frames_displayed_;
-    printf("⏱️  运行时间: %.2f 秒 | 显示操作: %d 次\n", 
-           total_time, cumulative_displayed);
+    // 打印显示帧统计信息
+    printf("📺 [%.1fs] 显示帧: %d 帧 (%.1f fps) | 累计: %d 帧 | 平均: %.2f ms/帧\n",
+           total_time, display_delta, display_fps, cumulative_displayed, avg_time_per_frame);
 }
 
 void PerformanceMonitor::executeTaskWithBufferManager(double interval, int load_delta, int decode_delta, int display_delta) {
