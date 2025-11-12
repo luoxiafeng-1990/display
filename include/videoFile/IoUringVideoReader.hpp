@@ -1,6 +1,7 @@
 #ifndef IOURING_VIDEO_READER_HPP
 #define IOURING_VIDEO_READER_HPP
 
+#include "IVideoReader.hpp"
 #include "../buffer/Buffer.hpp"
 #include "../buffer/BufferManager.hpp"
 #include <liburing.h>
@@ -21,45 +22,57 @@
  * - 多线程并发读取视频帧
  * - 随机访问模式
  * - 性能敏感的应用
+ * - 大文件（>1GB）高并发读取
  */
-class IoUringVideoReader {
+class IoUringVideoReader : public IVideoReader {
 public:
     /**
-     * 构造函数
-     * 
-     * @param video_path 视频文件路径
-     * @param width 视频宽度
-     * @param height 视频高度
-     * @param bits_per_pixel 每像素位数
+     * 构造函数（默认）
      * @param queue_depth io_uring队列深度（建议16-64）
      */
-    IoUringVideoReader(const char* video_path, 
-                      int width, int height, int bits_per_pixel,
-                      int queue_depth = 32);
+    IoUringVideoReader(int queue_depth = 32);
     
     /**
      * 析构函数
      */
-    ~IoUringVideoReader();
+    virtual ~IoUringVideoReader();
     
     // 禁止拷贝
     IoUringVideoReader(const IoUringVideoReader&) = delete;
     IoUringVideoReader& operator=(const IoUringVideoReader&) = delete;
     
-    /**
-     * 检查是否初始化成功
-     */
-    bool isInitialized() const { return initialized_; }
+    // ============ IVideoReader 接口实现 ============
     
-    /**
-     * 获取总帧数
-     */
-    int getTotalFrames() const { return total_frames_; }
+    bool open(const char* path) override;
+    bool openRaw(const char* path, int width, int height, int bits_per_pixel) override;
+    void close() override;
+    bool isOpen() const override;
     
-    /**
-     * 获取帧大小
-     */
-    size_t getFrameSize() const { return frame_size_; }
+    bool readFrameTo(Buffer& dest_buffer) override;
+    bool readFrameTo(void* dest_buffer, size_t buffer_size) override;
+    bool readFrameAt(int frame_index, Buffer& dest_buffer) override;
+    bool readFrameAt(int frame_index, void* dest_buffer, size_t buffer_size) override;
+    bool readFrameAtThreadSafe(int frame_index, void* dest_buffer, size_t buffer_size) const override;
+    
+    bool seek(int frame_index) override;
+    bool seekToBegin() override;
+    bool seekToEnd() override;
+    bool skip(int frame_count) override;
+    
+    int getTotalFrames() const override;
+    int getCurrentFrameIndex() const override;
+    size_t getFrameSize() const override;
+    long getFileSize() const override;
+    int getWidth() const override;
+    int getHeight() const override;
+    int getBytesPerPixel() const override;
+    const char* getPath() const override;
+    bool hasMoreFrames() const override;
+    bool isAtEnd() const override;
+    
+    const char* getReaderType() const override;
+    
+    // ============ IoUring 专有接口（保留原有功能） ============
     
     /**
      * 异步生产者线程（用于替代multiVideoProducerThread）
@@ -115,14 +128,17 @@ private:
     int queue_depth_;
     bool initialized_;
     
-    // 文件相关
+    // 文件相关（IVideoReader 接口需要）
     int video_fd_;
     std::string video_path_;
     size_t frame_size_;
+    long file_size_;
     int total_frames_;
+    int current_frame_index_;  // 当前帧索引（用于顺序读取）
     int width_;
     int height_;
     int bits_per_pixel_;
+    bool is_open_;
     
     // 用于追踪每个I/O请求
     struct ReadRequest {

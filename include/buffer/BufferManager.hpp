@@ -126,26 +126,7 @@ public:
      */
     size_t getBufferSize() const;
     
-    // ============ 生产者线程接口 ============
-    
-    /**
-     * 启动视频文件生产者线程（单线程模式）
-     * 
-     * 自动从视频文件读取帧数据并填充到Buffer中
-     * 
-     * @param video_file_path 视频文件路径
-     * @param width 视频宽度（像素）
-     * @param height 视频高度（像素）
-     * @param bits_per_pixel 每像素位数（如RGB24=24, RGBA32=32）
-     * @param loop 是否循环播放（到达文件末尾后重新开始）
-     * @param error_callback 错误回调函数（可选）
-     * @return 成功返回true，失败返回false
-     */
-    bool startVideoProducer(const char* video_file_path, 
-                           int width, int height, int bits_per_pixel,
-                           bool loop = false,
-                           ErrorCallback error_callback = nullptr);
-    
+   
     /**
      * 启动多个视频文件生产者线程（多线程模式）
      * 

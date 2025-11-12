@@ -5,6 +5,8 @@ bin_PROGRAMS = display_test
 display_test_SOURCES = test.cpp \
                        source/display/LinuxFramebufferDevice.cpp \
                        source/videoFile/VideoFile.cpp \
+                       source/videoFile/MmapVideoReader.cpp \
+                       source/videoFile/VideoReaderFactory.cpp \
                        source/monitor/PerformanceMonitor.cpp \
                        source/monitor/Timer.cpp \
                        source/buffer/BufferManager.cpp \

@@ -419,16 +419,6 @@ bool BufferManager::startVideoProducerInternal(int thread_count,
     return true;
 }
 
-// 单线程模式便利接口（内部调用统一实现）
-bool BufferManager::startVideoProducer(const char* video_file_path, 
-                                      int width, int height, int bits_per_pixel,
-                                      bool loop,
-                                      ErrorCallback error_callback) {
-    // 调用统一实现，thread_count = 1
-    return startVideoProducerInternal(1, video_file_path, width, height, 
-                                     bits_per_pixel, loop, error_callback);
-}
-
 void BufferManager::stopVideoProducer() {
     if (!producer_running_) {
         return;
@@ -728,11 +718,10 @@ bool BufferManager::startMultipleVideoProducersIoUring(int thread_count,
     error_callback_ = error_callback;
     
     // 首先创建一个临时reader来获取总帧数和验证文件
-    IoUringVideoReader* temp_reader = new IoUringVideoReader(video_file_path, width, height, 
-                                                              bits_per_pixel, 32);
+    IoUringVideoReader* temp_reader = new IoUringVideoReader(32);
     
-    if (!temp_reader->isInitialized()) {
-        printf("❌ ERROR: Failed to initialize IoUringVideoReader\n");
+    if (!temp_reader->openRaw(video_file_path, width, height, bits_per_pixel)) {
+        printf("❌ ERROR: Failed to open video file with IoUringVideoReader\n");
         delete temp_reader;
         return false;
     }
@@ -774,10 +763,11 @@ bool BufferManager::startMultipleVideoProducersIoUring(int thread_count,
     
     for (int i = 0; i < thread_count; i++) {
         // 为每个线程创建独立的reader
-        IoUringVideoReader* reader = new IoUringVideoReader(video_file_path, width, height, 
-                                                             bits_per_pixel, 32);
-        if (!reader->isInitialized()) {
-            printf("❌ ERROR: Failed to initialize IoUringVideoReader for thread #%d\n", i);
+        IoUringVideoReader* reader = new IoUringVideoReader(32);
+        
+        if (!reader->openRaw(video_file_path, width, height, bits_per_pixel)) {
+            printf("❌ ERROR: Failed to open video file for thread #%d\n", i);
+            delete reader;
             // 清理已创建的readers
             for (void* r : iouring_readers_) {
                 delete static_cast<IoUringVideoReader*>(r);
