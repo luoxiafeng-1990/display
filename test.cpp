@@ -194,29 +194,14 @@ static int test_buffermanager_producer(const char* raw_video_path) {
         return -1;
     }
     
-    printf("📺 Display initialized:\n");
-    printf("   Resolution: %dx%d\n", display.getWidth(), display.getHeight());
-    printf("   Bits per pixel: %d\n", display.getBitsPerPixel());
-    printf("   Buffer count: %d\n", display.getBufferCount());
-    
     // 2. 获取 display 的 BufferPool（framebuffer 已托管）
-    BufferPool* pool = display.getBufferPool();
-    if (!pool) {
-        printf("❌ Failed to get BufferPool from display\n");
-        return -1;
-    }
-    
-    printf("\n📦 Using LinuxFramebufferDevice's BufferPool (zero-copy)\n");
-    pool->printStats();
+    BufferPool& pool = display.getBufferPool();
+    pool.printStats();
     
     // 3. 创建 VideoProducer（依赖注入 BufferPool）
-    VideoProducer producer(*pool);
-    
+    VideoProducer producer(pool);
     // 4. 配置并启动视频生产者
-    printf("\n🎬 Starting video producer...\n");
-    
     int producer_thread_count = 2;  // 使用2个生产者线程
-    printf("   Using %d producer threads for parallel reading\n", producer_thread_count);
     
     VideoProducer::Config config(
         raw_video_path,
@@ -237,10 +222,6 @@ static int test_buffermanager_producer(const char* raw_video_path) {
         printf("❌ Failed to start video producer\n");
         return -1;
     }
-    
-    printf("✅ Video producer started\n");
-    printf("\n🎥 Starting display loop (Ctrl+C to stop)...\n\n");
-    
     // 注册信号处理
     signal(SIGINT, signal_handler);
     
@@ -249,23 +230,19 @@ static int test_buffermanager_producer(const char* raw_video_path) {
     
     while (g_running) {
         // 获取一个已填充的 buffer（阻塞，100ms超时）
-        Buffer* filled_buffer = pool->acquireFilled(true, 100);
+        Buffer* filled_buffer = pool.acquireFilled(true, 100);
         if (filled_buffer == nullptr) {
             // 超时，继续等待
             continue;
         }
-        
         // 直接显示（无需拷贝，buffer 本身就是 framebuffer）
         display.waitVerticalSync();
         if (!display.displayBuffer(filled_buffer)) {
             printf("⚠️  Warning: Failed to display buffer\n");
         }
-        
         // 归还 buffer 到空闲队列
-        pool->releaseFilled(filled_buffer);
-        
+        pool.releaseFilled(filled_buffer);
         frame_count++;
-        
         // 每100帧打印一次进度
         if (frame_count % 100 == 0) {
             printf("   Frames displayed: %d (%.1f fps)\n", 
@@ -274,22 +251,8 @@ static int test_buffermanager_producer(const char* raw_video_path) {
     }
     
     // 6. 停止生产者
-    printf("\n\n🛑 Stopping video producer...\n");
     producer.stop();
-    
-    printf("🛑 Playback stopped\n\n");
-    
-    // 7. 打印最终统计
-    printf("📊 Final Statistics:\n");
-    printf("   Frames displayed: %d\n", frame_count);
-    printf("   Frames produced: %d\n", producer.getProducedFrames());
-    printf("   Frames skipped: %d\n", producer.getSkippedFrames());
-    printf("   Average FPS: %.2f\n", producer.getAverageFPS());
-    
-    pool->printStats();
-    
-    printf("\n✅ Test completed successfully\n");
-    
+    pool.printStats();
     return 0;
 }
 
@@ -321,17 +284,13 @@ static int test_buffermanager_iouring(const char* raw_video_path) {
     printf("   Buffer count: %d\n", display.getBufferCount());
     
     // 2. 获取 display 的 BufferPool
-    BufferPool* pool = display.getBufferPool();
-    if (!pool) {
-        printf("❌ Failed to get BufferPool from display\n");
-        return -1;
-    }
+    BufferPool& pool = display.getBufferPool();
     
     printf("\n📦 Using LinuxFramebufferDevice's BufferPool\n");
-    pool->printStats();
+    pool.printStats();
     
     // 3. 创建 VideoProducer（单线程，顺序读取）
-    VideoProducer producer(*pool);
+    VideoProducer producer(pool);
     
     printf("\n🎬 Starting video producer (sequential mode)...\n");
     printf("   Using 1 producer thread for sequential reading\n");
@@ -364,7 +323,7 @@ static int test_buffermanager_iouring(const char* raw_video_path) {
     int frame_count = 0;
     
     while (g_running) {
-        Buffer* filled_buffer = pool->acquireFilled(true, 100);
+        Buffer* filled_buffer = pool.acquireFilled(true, 100);
         if (filled_buffer == nullptr) {
             continue;
         }
@@ -374,7 +333,7 @@ static int test_buffermanager_iouring(const char* raw_video_path) {
             printf("⚠️  Warning: Failed to display buffer\n");
         }
         
-        pool->releaseFilled(filled_buffer);
+        pool.releaseFilled(filled_buffer);
         frame_count++;
         
         if (frame_count % 100 == 0) {
@@ -396,7 +355,7 @@ static int test_buffermanager_iouring(const char* raw_video_path) {
     printf("   Frames skipped: %d\n", producer.getSkippedFrames());
     printf("   Average FPS: %.2f\n", producer.getAverageFPS());
     
-    pool->printStats();
+    pool.printStats();
     
     printf("\n✅ Test completed successfully\n");
     printf("\nℹ️  TODO: Implement IoUringVideoProducer for true async I/O performance\n");

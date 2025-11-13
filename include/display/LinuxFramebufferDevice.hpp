@@ -97,18 +97,42 @@ public:
     // ============ 新接口：BufferPool 访问 ============
     
     /**
-     * @brief 获取 BufferPool 指针
-     * @return BufferPool* 用于与 VideoProducer 配合
+     * @brief 获取 BufferPool 引用
+     * @return BufferPool& 对内部 BufferPool 的引用
+     * @throws std::runtime_error 如果 BufferPool 未初始化
+     * 
+     * @note 生命周期：返回的引用在 LinuxFramebufferDevice 对象存活期间有效
+     * @warning 不要在 cleanup() 或析构后使用返回的引用
+     * @warning 引用的生命周期与 LinuxFramebufferDevice 绑定
      * 
      * 使用示例：
      * @code
      * LinuxFramebufferDevice display;
      * display.initialize(0);
-     * BufferPool* pool = display.getBufferPool();
-     * VideoProducer producer(*pool);
+     * BufferPool& pool = display.getBufferPool();  // 注意是引用
+     * VideoProducer producer(pool);
+     * // 或直接传递：
+     * VideoProducer producer2(display.getBufferPool());
      * @endcode
      */
-    BufferPool* getBufferPool() { return buffer_pool_.get(); }
+    BufferPool& getBufferPool() {
+        if (!buffer_pool_) {
+            throw std::runtime_error("❌ BufferPool not initialized. Call initialize() first.");
+        }
+        return *buffer_pool_;
+    }
+    
+    /**
+     * @brief 获取 BufferPool 常量引用
+     * @return const BufferPool& 对内部 BufferPool 的常量引用
+     * @throws std::runtime_error 如果 BufferPool 未初始化
+     */
+    const BufferPool& getBufferPool() const {
+        if (!buffer_pool_) {
+            throw std::runtime_error("❌ BufferPool not initialized. Call initialize() first.");
+        }
+        return *buffer_pool_;
+    }
     
     /**
      * @brief 显示指定的 buffer（使用新 Buffer 接口）
