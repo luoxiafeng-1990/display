@@ -95,6 +95,70 @@ public:
     bool waitVerticalSync() override;
     int getCurrentDisplayBuffer() const override;
     
+    // ============ 新接口：显式显示方法（按显示方式拆分）============
+    
+    /**
+     * @brief 通过 DMA 零拷贝方式显示 buffer
+     * @param buffer 带有物理地址的 Buffer 对象
+     * @return true 显示成功，false 显示失败
+     * 
+     * @note 要求：
+     *   - buffer 必须有有效的物理地址（phys_addr != 0）
+     *   - 驱动必须支持 FB_IOCTL_SET_DMA_INFO ioctl
+     * 
+     * @note 优点：零拷贝，性能最高
+     * @note 适用场景：视频解码器输出的 buffer（带物理地址）
+     * 
+     * @warning 如果 buffer 没有物理地址，此函数会失败
+     */
+    bool displayBufferByDMA(Buffer* buffer);
+    
+    /**
+     * @brief 显示已填充的 framebuffer buffer
+     * @param buffer 已填充数据的 framebuffer buffer 对象
+     * @return true 显示成功，false 显示失败
+     * 
+     * @note 工作流程：
+     *   1. 从 buffer 对象中获取 id（framebuffer 索引）
+     *   2. 验证 buffer 是否属于当前 framebuffer 的 BufferPool
+     *   3. 通过 ioctl 切换显示到该 buffer
+     * 
+     * @note 要求：
+     *   - buffer 必须是从当前 framebuffer 的 BufferPool 获取的
+     *   - buffer 必须已经填充了要显示的数据
+     * 
+     * @note 优点：无需拷贝，切换速度快，与 BufferPool 生产者模式配合
+     * @note 适用场景：生产者填充 framebuffer buffer 后直接显示
+     * 
+     * 使用示例：
+     * @code
+     * BufferPool& pool = display.getBufferPool();
+     * Buffer* fb_buf = pool.acquireFree(true, 1000);  // 生产者获取空闲 buffer
+     * // ... 填充数据到 fb_buf ...
+     * display.displayFilledFramebuffer(fb_buf);  // 显示填充后的 buffer
+     * pool.releaseFilled(fb_buf);  // 归还到 filled 队列
+     * @endcode
+     */
+    bool displayFilledFramebuffer(Buffer* buffer);
+    
+    /**
+     * @brief 通过 memcpy 拷贝到 framebuffer 再显示
+     * @param buffer 任意来源的 Buffer 对象
+     * @return true 显示成功，false 显示失败
+     * 
+     * @note 工作流程：
+     *   1. 从 framebuffer pool 获取一个空闲 buffer
+     *   2. 将 buffer 的数据拷贝到 framebuffer buffer
+     *   3. 切换显示到该 framebuffer buffer
+     * 
+     * @note 优点：通用性强，适用于任意来源的 buffer
+     * @note 缺点：需要一次 memcpy，性能较低
+     * @note 适用场景：来自网络/文件的 buffer，没有物理地址
+     * 
+     * @warning 性能开销大，仅在无法使用其他方法时使用
+     */
+    bool displayBufferByMemcpyToFramebuffer(Buffer* buffer);
+    
     // ============ 新接口：BufferPool 访问 ============
     
     /**
@@ -134,13 +198,6 @@ public:
         }
         return *buffer_pool_;
     }
-    
-    /**
-     * @brief 显示指定的 buffer（使用新 Buffer 接口）
-     * @param buffer Buffer 指针
-     * @return true 如果显示成功
-     */
-    bool displayBuffer(Buffer* buffer);
 };
 
 #endif // LINUX_FRAMEBUFFER_DEVICE_HPP

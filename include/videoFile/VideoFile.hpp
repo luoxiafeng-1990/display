@@ -48,9 +48,18 @@ public:
     
     /**
      * 构造函数
-     * @param type 读取器类型（默认AUTO，自动选择）
+     * @param type 读取器类型（默认AUTO，自动选择最优实现）
+     * 
+     * @note 推荐做法：不依赖默认值，显式调用 setReaderType() 来明确读取器类型
+     * 
+     * 使用示例：
+     * @code
+     * VideoFile video;
+     * video.setReaderType(VideoReaderFactory::ReaderType::MMAP);  // 明确指定
+     * video.openRaw(path, width, height, bpp);
+     * @endcode
      */
-    VideoFile(VideoReaderFactory::ReaderType type = VideoReaderFactory::ReaderType::RTSP);
+    VideoFile(VideoReaderFactory::ReaderType type = VideoReaderFactory::ReaderType::AUTO);
     
     /**
      * 析构函数

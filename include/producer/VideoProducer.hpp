@@ -31,22 +31,25 @@ public:
      * @brief 视频配置结构
      */
     struct Config {
-        std::string file_path;      // 视频文件路径
-        int width;                  // 分辨率宽度
-        int height;                 // 分辨率高度
-        int bits_per_pixel;         // 每像素位数（8/16/24/32）
-        bool loop;                  // 是否循环播放
-        int thread_count;           // 生产者线程数（默认1）
+        std::string file_path;                         // 视频文件路径
+        int width;                                     // 分辨率宽度
+        int height;                                    // 分辨率高度
+        int bits_per_pixel;                            // 每像素位数（8/16/24/32）
+        bool loop;                                     // 是否循环播放
+        int thread_count;                              // 生产者线程数（默认1）
+        VideoReaderFactory::ReaderType reader_type;    // 读取器类型（默认AUTO）
         
         // 默认构造
         Config() 
             : width(0), height(0), bits_per_pixel(0)
-            , loop(false), thread_count(1) {}
+            , loop(false), thread_count(1)
+            , reader_type(VideoReaderFactory::ReaderType::AUTO) {}
         
         // 便利构造
-        Config(const std::string& path, int w, int h, int bpp, bool l = false, int tc = 1)
+        Config(const std::string& path, int w, int h, int bpp, bool l = false, int tc = 1,
+               VideoReaderFactory::ReaderType rt = VideoReaderFactory::ReaderType::AUTO)
             : file_path(path), width(w), height(h), bits_per_pixel(bpp)
-            , loop(l), thread_count(tc) {}
+            , loop(l), thread_count(tc), reader_type(rt) {}
     };
     
     /**
@@ -163,4 +166,5 @@ private:
     // 性能监控
     std::chrono::steady_clock::time_point start_time_;
 };
+
 

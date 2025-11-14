@@ -58,6 +58,11 @@ bool VideoProducer::start(const Config& config) {
     
     // 创建共享的 VideoFile 对象
     video_file_ = std::make_shared<VideoFile>();
+    
+    // 设置读取器类型（根据配置显式指定）
+    video_file_->setReaderType(config.reader_type);
+    printf("   Reader type: %s\n", video_file_->getReaderType());
+    
     if (!video_file_->openRaw(config.file_path.c_str(), 
                               config.width, config.height, config.bits_per_pixel)) {
         setError("Failed to open video file: " + config.file_path);

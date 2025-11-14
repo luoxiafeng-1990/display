@@ -94,3 +94,4 @@ private:
     std::shared_ptr<bool> alive_;  // 生命周期标记（shared_ptr，供 weak_ptr 检测）
 };
 
+

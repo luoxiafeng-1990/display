@@ -73,6 +73,50 @@ public:
                const std::string name = "UnnamedPool",
                const std::string category = "");
     
+    // ========== 构造方式 4: 动态注入模式（初始为空）==========
+    /**
+     * @brief 创建 BufferPool（动态注入模式 - 初始为空）
+     * 
+     * 适用场景：
+     * - RTSP 流解码（AVFrame 动态注入）
+     * - 网络接收器（零拷贝动态注入）
+     * - 任何需要运行时动态填充 buffer 的场景
+     * 
+     * 工作流程：
+     * 1. 创建空的 BufferPool（没有预分配 buffer）
+     * 2. 生产者通过 injectFilledBuffer() 动态注入 buffer
+     * 3. 消费者正常使用 acquireFilled() / releaseFilled()
+     * 
+     * 特点：
+     * - Pool 纯粹作为队列调度器，不拥有任何预分配的 buffer
+     * - 所有 buffer 都通过 injectFilledBuffer() 运行时注入
+     * - 适合 RTSP 等动态解码场景，对用户透明
+     * 
+     * @param name Pool 名称（用于全局注册和调试）
+     * @param category Pool 分类（如 "Display", "Video", "RTSP"）
+     * @param max_capacity 最大容量限制（0 表示无限制）
+     * 
+     * @note 这个模式下 getTotalCount() 会返回当前已注入的 buffer 数量（动态变化）
+     * 
+     * 使用示例：
+     * @code
+     * // 创建动态注入模式的 BufferPool（初始为空）
+     * BufferPool rtsp_pool("RTSP_Decoder_Pool", "RTSP", 10);  // 最多缓存10帧
+     * 
+     * // RtspVideoReader 内部会动态注入解码后的 AVFrame
+     * VideoProducer producer(rtsp_pool);
+     * producer.start(config);
+     * 
+     * // 消费循环（对用户透明）
+     * while (running) {
+     *     Buffer* buf = rtsp_pool.acquireFilled(true, 100);
+     *     display.displayBufferByDMA(buf);
+     *     rtsp_pool.releaseFilled(buf);
+     * }
+     * @endcode
+     */
+    BufferPool(const std::string name, const std::string category, size_t max_capacity = 0);
+    
     /**
      * @brief 析构函数 - 释放资源
      */
@@ -248,6 +292,7 @@ private:
     
     // Buffer 池
     size_t buffer_size_;                              // 单个 buffer 大小
+    size_t max_capacity_;                             // 最大容量限制（0 表示无限制，用于动态注入模式）
     std::vector<Buffer> buffers_;                     // Buffer 对象池
     std::unordered_map<uint32_t, Buffer*> buffer_map_; // ID -> Buffer* 快速索引
     

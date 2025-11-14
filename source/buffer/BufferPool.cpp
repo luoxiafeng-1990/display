@@ -16,6 +16,7 @@ BufferPool::BufferPool(int count, size_t size, bool use_cma,
     , category_(category)
     , registry_id_(0)
     , buffer_size_(size)
+    , max_capacity_(0)
     , next_buffer_id_(0)
 {
     printf("\n📦 Initializing BufferPool '%s' (owned buffers)...\n", name_.c_str());
@@ -40,6 +41,7 @@ BufferPool::BufferPool(const std::vector<ExternalBufferInfo>& external_buffers,
     , category_(category)
     , registry_id_(0)
     , buffer_size_(0)
+    , max_capacity_(0)
     , next_buffer_id_(0)
 {
     printf("\n📦 Initializing BufferPool '%s' (external buffers - simple mode)...\n", name_.c_str());
@@ -65,6 +67,7 @@ BufferPool::BufferPool(std::vector<std::unique_ptr<BufferHandle>> handles,
     , category_(category)
     , registry_id_(0)
     , buffer_size_(0)
+    , max_capacity_(0)
     , next_buffer_id_(0)
 {
     printf("\n📦 Initializing BufferPool '%s' (external buffers - lifetime tracking)...\n", name_.c_str());
@@ -83,6 +86,33 @@ BufferPool::BufferPool(std::vector<std::unique_ptr<BufferHandle>> handles,
     printf("   Total buffers: %d\n", getTotalCount());
     printf("   Free buffers: %d\n", getFreeCount());
     printf("   Lifetime trackers: %zu\n", lifetime_trackers_.size());
+}
+
+BufferPool::BufferPool(const std::string name, const std::string category, size_t max_capacity)
+    : name_(name)
+    , category_(category)
+    , registry_id_(0)
+    , buffer_size_(0)
+    , max_capacity_(max_capacity)
+    , next_buffer_id_(0)
+{
+    printf("\n📦 Initializing BufferPool '%s' (dynamic injection mode)...\n", name_.c_str());
+    printf("   Initial buffer count: 0 (buffers will be injected dynamically)\n");
+    if (max_capacity_ > 0) {
+        printf("   Max capacity: %zu buffers\n", max_capacity_);
+    } else {
+        printf("   Max capacity: unlimited\n");
+    }
+    
+    // 不分配任何 buffer，不调用任何初始化方法
+    // buffer 将通过 injectFilledBuffer() 动态注入
+    
+    // 自动注册到全局注册表
+    registry_id_ = BufferPoolRegistry::getInstance().registerPool(this, name_, category_);
+    
+    printf("✅ BufferPool '%s' created successfully (ready for dynamic injection)\n", name_.c_str());
+    printf("   Current buffers: %d\n", getTotalCount());
+    printf("   Note: Buffers will be injected at runtime via injectFilledBuffer()\n");
 }
 
 BufferPool::~BufferPool() {

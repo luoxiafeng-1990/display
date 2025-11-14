@@ -60,8 +60,9 @@ static int test_4frame_loop(const char* raw_video_path) {
     
     int buffer_count = display.getBufferCount();
     
-    // 打开视频文件
+    // 打开视频文件（使用 MMAP 读取器）
     VideoFile video;
+    video.setReaderType(VideoReaderFactory::ReaderType::MMAP);  // 显式指定 MMAP 读取器
     if (!video.openRaw(raw_video_path, 
                        display.getWidth(), 
                        display.getHeight(), 
@@ -133,8 +134,9 @@ static int test_sequential_playback(const char* raw_video_path) {
         return -1;
     }
     
-    // 打开视频文件
+    // 打开视频文件（使用 MMAP 读取器）
     VideoFile video;
+    video.setReaderType(VideoReaderFactory::ReaderType::MMAP);  // 显式指定 MMAP 读取器
     if (!video.openRaw(raw_video_path, 
                        display.getWidth(), 
                        display.getHeight(), 
@@ -209,7 +211,8 @@ static int test_buffermanager_producer(const char* raw_video_path) {
         display.getHeight(),
         display.getBitsPerPixel(),
         true,  // loop
-        producer_thread_count
+        producer_thread_count,
+        VideoReaderFactory::ReaderType::MMAP  // 显式指定 MMAP 读取器
     );
     
     // 设置错误回调
@@ -237,7 +240,7 @@ static int test_buffermanager_producer(const char* raw_video_path) {
         }
         // 直接显示（无需拷贝，buffer 本身就是 framebuffer）
         display.waitVerticalSync();
-        if (!display.displayBuffer(filled_buffer)) {
+        if (!display.displayFilledFramebuffer(filled_buffer)) {
             printf("⚠️  Warning: Failed to display buffer\n");
         }
         // 归还 buffer 到空闲队列
@@ -292,8 +295,8 @@ static int test_buffermanager_iouring(const char* raw_video_path) {
     // 3. 创建 VideoProducer（单线程，顺序读取）
     VideoProducer producer(pool);
     
-    printf("\n🎬 Starting video producer (sequential mode)...\n");
-    printf("   Using 1 producer thread for sequential reading\n");
+    printf("\n🎬 Starting video producer (io_uring mode)...\n");
+    printf("   Using 1 producer thread with io_uring async I/O\n");
     
     VideoProducer::Config config(
         raw_video_path,
@@ -301,7 +304,8 @@ static int test_buffermanager_iouring(const char* raw_video_path) {
         display.getHeight(),
         display.getBitsPerPixel(),
         true,  // loop
-        1  // 单线程顺序读取
+        1,  // 单线程顺序读取
+        VideoReaderFactory::ReaderType::IOURING  // 显式指定 io_uring 读取器
     );
     
     producer.setErrorCallback([](const std::string& error) {
@@ -329,7 +333,7 @@ static int test_buffermanager_iouring(const char* raw_video_path) {
         }
         
         display.waitVerticalSync();
-        if (!display.displayBuffer(filled_buffer)) {
+        if (!display.displayFilledFramebuffer(filled_buffer)) {
             printf("⚠️  Warning: Failed to display buffer\n");
         }
         
@@ -364,42 +368,53 @@ static int test_buffermanager_iouring(const char* raw_video_path) {
 }
 
 /**
- * 测试5：RTSP 视频流播放（智能零拷贝 DMA 模式）
+ * 测试5：RTSP 视频流播放（独立 BufferPool + DMA 零拷贝显示）
  * 
  * 功能演示：
  * - 连接 RTSP 视频流
  * - 使用 RtspVideoReader 解码（FFmpeg + 硬件解码器）
- * - 智能零拷贝 DMA 显示：完全自动，用户无感知
+ * - 独立的 BufferPool 管理解码输出
+ * - DMA 零拷贝显示：直接使用物理地址
  * - 展示 RTSP 流的实时处理能力
  * 
- * 零拷贝工作流程（完全透明）：
+ * 架构设计：
+ * RTSP Stream → FFmpeg 硬件解码 → AVFrame (带物理地址)
+ *                                      ↓
+ *                         独立的 BufferPool（管理解码输出）
+ *                                      ↓
+ *                         Buffer (包含物理地址)
+ *                                      ↓
+ *                  display.displayBufferByDMA(buffer)
+ *                                      ↓
+ *                         Display 驱动 DMA 显示
+ * 
+ * 零拷贝工作流程：
  * 1. RtspVideoReader 解码 RTSP 流，获得带物理地址的 AVFrame
- * 2. RtspVideoReader 将 AVFrame 包装为 BufferHandle，注入 BufferPool
- * 3. 消费者调用 pool.acquireFilled() 获取 Buffer（含物理地址）
- * 4. 消费者调用 display.displayBuffer(buffer)：
- *    - Display 自动检测 buffer 有物理地址
- *    - Display 自动调用 FB_IOCTL_SET_DMA_INFO 设置 DMA
- *    - Display 自动调用 FBIOPAN_DISPLAY 触发硬件显示
+ * 2. RtspVideoReader 从 AVFrame 提取物理地址（通过 DMA buf）
+ * 3. RtspVideoReader 将 AVFrame 包装为 Buffer，注入独立的 BufferPool
+ * 4. 消费者从独立的 BufferPool 获取 Buffer（含物理地址）
+ * 5. 消费者调用 display.displayBufferByDMA(buffer)：
+ *    - 直接将物理地址传递给驱动（FB_IOCTL_SET_DMA_INFO）
+ *    - 驱动通过 DMA 从解码器内存直接读取显示
  *    - 整个过程：0 次 memcpy！
- * 5. 消费者调用 pool.releaseFilled() 归还 buffer
- * 6. BufferPool 触发 deleter，RtspVideoReader 回收 AVFrame
+ * 6. 消费者归还 buffer，触发 deleter 回收 AVFrame
  * 
  * 关键设计理念：
- * - 用户代码保持不变：acquireFilled() -> displayBuffer() -> releaseFilled()
- * - Display 内部智能检测：有物理地址用 DMA，无物理地址用 memcpy
- * - 完全符合大厂设计：单一职责、开放封闭、用户透明
+ * - 独立 BufferPool：专门管理 RTSP 解码输出，不依赖 framebuffer
+ * - 显式 DMA 调用：明确使用 displayBufferByDMA，清晰可控
+ * - 零拷贝路径：解码器输出 → DMA → 显示，无中间拷贝
  */
 static int test_rtsp_stream(const char* rtsp_url) {
     printf("\n═══════════════════════════════════════════════════════\n");
-    printf("  Test: RTSP Stream Playback (Smart Zero-Copy DMA)\n");
+    printf("  Test: RTSP Stream Playback (Independent BufferPool + DMA)\n");
     printf("═══════════════════════════════════════════════════════\n\n");
     
     printf("ℹ️  Zero-Copy Workflow:\n");
     printf("   1. RtspVideoReader decodes RTSP → AVFrame with phys_addr\n");
-    printf("   2. RtspVideoReader injects BufferHandle to BufferPool\n");
-    printf("   3. Consumer acquires Buffer (with phys_addr)\n");
-    printf("   4. Display auto-detects phys_addr → uses DMA path\n");
-    printf("   5. DMA reads directly from decoder output (0 memcpy)\n");
+    printf("   2. Extract phys_addr from AVFrame (via DMA buf)\n");
+    printf("   3. Inject Buffer to independent BufferPool\n");
+    printf("   4. Consumer acquires Buffer from independent pool\n");
+    printf("   5. display.displayBufferByDMA(buffer) → DMA zero-copy\n");
     printf("   6. Consumer releases Buffer → triggers deleter\n\n");
     
     // 1. 初始化显示设备
@@ -409,13 +424,19 @@ static int test_rtsp_stream(const char* rtsp_url) {
         return -1;
     }
     
-    // 2. 获取 display 的 BufferPool
-    BufferPool& pool = display.getBufferPool();
-    pool.printStats();
+    // 2. 创建独立的 BufferPool（动态注入模式）
+    printf("📦 Creating independent BufferPool for RTSP decoder...\n");
+    // 使用动态注入模式构造函数：初始为空，buffer 由 RtspVideoReader 在运行时动态注入
+    // - 对用户透明：RtspVideoReader 内部通过 injectFilledBuffer() 注入解码后的 AVFrame
+    // - 用户只需要正常使用 acquireFilled() / releaseFilled()，无需关心内部细节
+    BufferPool rtsp_pool("RTSP_Decoder_Pool", "RTSP", 10);  // 最多缓存10帧
     
-    // 3. 创建 VideoProducer（依赖注入 BufferPool）
-    printf("📹 Creating VideoProducer...\n");
-    VideoProducer producer(pool);
+    printf("✅ Independent BufferPool created (dynamic injection mode)\n");
+    rtsp_pool.printStats();
+    
+    // 3. 创建 VideoProducer（依赖注入独立的 BufferPool）
+    printf("📹 Creating VideoProducer with independent BufferPool...\n");
+    VideoProducer producer(rtsp_pool);  // 使用独立的 rtsp_pool
     
     // 4. 配置 RTSP 流（注意：推荐单线程）
     printf("🔗 Configuring RTSP stream: %s\n", rtsp_url);
@@ -425,7 +446,8 @@ static int test_rtsp_stream(const char* rtsp_url) {
         display.getHeight(),
         display.getBitsPerPixel(),
         false,  // loop（对RTSP无意义）
-        1       // thread_count（RTSP推荐单线程）
+        1,      // thread_count（RTSP推荐单线程）
+        VideoReaderFactory::ReaderType::RTSP  // 显式指定 RTSP 读取器
     );
     
     // 5. 设置错误回调
@@ -443,42 +465,46 @@ static int test_rtsp_stream(const char* rtsp_url) {
     
     printf("\n✅ RTSP stream connected, starting playback...\n");
     printf("   Press Ctrl+C to stop\n");
-    printf("   Watch for '[DMA Zero-Copy Path]' messages below\n\n");
+    printf("   Watch for '[DMA Display]' messages below\n\n");
     
     // 注册信号处理
     signal(SIGINT, signal_handler);
     
-    // 7. 消费者循环：从 BufferPool 获取并显示（零拷贝 DMA）
+    // 7. 消费者循环：从独立 BufferPool 获取并通过 DMA 显示
     int frame_count = 0;
+    int dma_success = 0;
+    int dma_failed = 0;
     
     while (g_running) {
-        // 获取已填充的 buffer（零拷贝：RTSP 直接注入，带物理地址）
-        Buffer* filled_buffer = pool.acquireFilled(true, 100);
-        if (filled_buffer == nullptr) {
+        // 从独立的 RTSP BufferPool 获取已解码的 buffer（带物理地址）
+        Buffer* decoded_buffer = rtsp_pool.acquireFilled(true, 100);
+        if (decoded_buffer == nullptr) {
             continue;  // 超时，继续等待
         }
         
-        // ✨ 关键调用：display.displayBuffer() 会自动检测物理地址
-        // 如果 buffer 有物理地址（来自 RTSP 解码器）：
-        //   → Display 自动使用 DMA 零拷贝路径（FB_IOCTL_SET_DMA_INFO）
-        // 如果 buffer 无物理地址（传统文件读取）：
-        //   → Display 自动降级到 memcpy 路径
-        // 
-        // 用户完全无需关心内部实现！
+        // ✨ 关键调用：display.displayBufferByDMA(buffer)
+        // - 直接使用 buffer 的物理地址
+        // - 通过 FB_IOCTL_SET_DMA_INFO 将物理地址传递给驱动
+        // - 驱动通过 DMA 从解码器内存直接读取显示
+        // - 零拷贝：解码器输出 → DMA → 显示
         display.waitVerticalSync();
-        if (!display.displayBuffer(filled_buffer)) {
-            printf("⚠️  Warning: Failed to display buffer\n");
+        if (display.displayBufferByDMA(decoded_buffer)) {
+            dma_success++;
+        } else {
+            dma_failed++;
+            printf("⚠️  Warning: DMA display failed for buffer (phys_addr=0x%llx)\n",
+                   (unsigned long long)decoded_buffer->getPhysicalAddress());
         }
         
         // 归还 buffer（会触发 RtspVideoReader 的 deleter 回收 AVFrame）
-        pool.releaseFilled(filled_buffer);
+        rtsp_pool.releaseFilled(decoded_buffer);
         
         frame_count++;
         
         // 每100帧打印一次统计
         if (frame_count % 100 == 0) {
-            printf("📊 Progress: %d frames displayed (%.1f fps)\n", 
-                   frame_count, producer.getAverageFPS());
+            printf("📊 Progress: %d frames displayed (%.1f fps, DMA success: %d, failed: %d)\n", 
+                   frame_count, producer.getAverageFPS(), dma_success, dma_failed);
         }
     }
     
@@ -488,7 +514,13 @@ static int test_rtsp_stream(const char* rtsp_url) {
     
     printf("\n✅ RTSP test completed\n");
     printf("   Total frames displayed: %d\n", frame_count);
-    pool.printStats();
+    printf("   DMA display success: %d\n", dma_success);
+    printf("   DMA display failed: %d\n", dma_failed);
+    printf("   Success rate: %.1f%%\n", 
+           frame_count > 0 ? (100.0 * dma_success / frame_count) : 0.0);
+    
+    printf("\n📦 Final BufferPool statistics:\n");
+    rtsp_pool.printStats();
     
     return 0;
 }

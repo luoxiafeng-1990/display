@@ -419,7 +419,11 @@ void LinuxFramebufferDevice::unmapHardwareFramebufferMemory() {
 
 // ============ 新接口：displayBuffer(Buffer*) - 智能零拷贝显示 ============
 
-bool LinuxFramebufferDevice::displayBuffer(Buffer* buffer) {
+// ========================================
+// 显式显示方法（按显示方式拆分）
+// ========================================
+
+bool LinuxFramebufferDevice::displayBufferByDMA(Buffer* buffer) {
     if (!is_initialized_) {
         printf("❌ ERROR: Device not initialized\n");
         return false;
@@ -430,164 +434,198 @@ bool LinuxFramebufferDevice::displayBuffer(Buffer* buffer) {
         return false;
     }
     
-    // ============ 智能检测：检查 buffer 是否有物理地址 ============
+    // 检查是否有物理地址
     uint64_t phys_addr = buffer->getPhysicalAddress();
-    bool has_phys_addr = (phys_addr != 0);
+    if (phys_addr == 0) {
+        printf("❌ ERROR: Buffer has no physical address (phys_addr=0)\n");
+        printf("   Hint: DMA display requires buffer with physical address\n");
+        return false;
+    }
     
     // 静态计数器，用于日志节流（避免过度打印）
-    static int dma_display_count = 0;
-    static int memcpy_display_count = 0;
-    static int fb_switch_count = 0;
+    static int display_count = 0;
     
-    // ============ 路径1: 零拷贝 DMA 路径（Buffer有物理地址）============
-    if (has_phys_addr) {
-        // 🚀 使用零拷贝 DMA 路径
-        // 参考 ids_test.cpp 的 ids_test_video3 实现
-        
-        struct tpsfb_dma_info dma_info;
-        dma_info.ovl_idx = 0;  // overlay 0（可以根据需要参数化）
-        dma_info.phys_addr = phys_addr;
-        
-        // 设置 DMA 物理地址
-        if (ioctl(fd_, FB_IOCTL_SET_DMA_INFO, &dma_info) < 0) {
-            printf("⚠️  Warning: FB_IOCTL_SET_DMA_INFO failed: %s (phys_addr=0x%llx)\n", 
-                   strerror(errno), (unsigned long long)phys_addr);
-            printf("   Falling back to memcpy path...\n");
-            // DMA 失败，降级到 memcpy 路径（见路径3）
-            goto fallback_memcpy;
-        }
-        
-        // 获取当前屏幕信息
-        struct fb_var_screeninfo var_info;
-        if (ioctl(fd_, FBIOGET_VSCREENINFO, &var_info) < 0) {
-            printf("❌ ERROR: FBIOGET_VSCREENINFO failed: %s\n", strerror(errno));
-            return false;
-        }
-        
-        // 🔧 关键：yoffset 设为 0，因为 DMA 直接从物理地址读取
-        // 不需要在 framebuffer 的多个 buffer 之间切换
-        var_info.yoffset = 0;
-        
-        // 通知驱动显示（驱动会通过 DMA 从 phys_addr 读取数据）
-        if (ioctl(fd_, FBIOPAN_DISPLAY, &var_info) < 0) {
-            printf("❌ ERROR: FBIOPAN_DISPLAY failed: %s\n", strerror(errno));
-            return false;
-        }
-        
-        // 📊 统计和日志（每100帧打印一次）
-        dma_display_count++;
-        if (dma_display_count == 1 || dma_display_count % 100 == 0) {
-            printf("🚀 [DMA Zero-Copy Path] Frame #%d displayed (phys_addr=0x%llx, buffer_id=%u)\n",
-                   dma_display_count, (unsigned long long)phys_addr, buffer->id());
-        }
-        
-        current_buffer_index_ = 0;  // DMA 模式下固定为 0
-        return true;
+    // 设置 DMA 信息
+    struct tpsfb_dma_info dma_info;
+    dma_info.ovl_idx = 0;  // overlay 0
+    dma_info.phys_addr = phys_addr;
+    
+    // 设置 DMA 物理地址
+    if (ioctl(fd_, FB_IOCTL_SET_DMA_INFO, &dma_info) < 0) {
+        printf("❌ ERROR: FB_IOCTL_SET_DMA_INFO failed: %s (phys_addr=0x%llx)\n", 
+               strerror(errno), (unsigned long long)phys_addr);
+        printf("   Hint: Driver may not support DMA display\n");
+        return false;
     }
     
-    // ============ 路径2: Framebuffer 切换路径（Buffer属于framebuffer pool）============
-    if (buffer_pool_ && buffer_pool_->validateBuffer(buffer)) {
-        // Buffer 属于 framebuffer pool，直接切换显示
-        uint32_t buffer_id = buffer->id();
-        
-        if (buffer_id >= static_cast<uint32_t>(buffer_count_)) {
-            printf("❌ ERROR: Invalid buffer index %u (max: %d)\n", buffer_id, buffer_count_ - 1);
-            return false;
-        }
-        
-        // 获取当前屏幕信息
-        struct fb_var_screeninfo var_info;
-        if (ioctl(fd_, FBIOGET_VSCREENINFO, &var_info) < 0) {
-            printf("❌ ERROR: FBIOGET_VSCREENINFO failed: %s\n", strerror(errno));
-            return false;
-        }
-        
-        // 设置yoffset（buffer索引 * 屏幕高度）
-        var_info.yoffset = var_info.yres * buffer_id;
-        
-        // 通过ioctl通知驱动切换buffer
-        if (ioctl(fd_, FBIOPAN_DISPLAY, &var_info) < 0) {
-            printf("❌ ERROR: FBIOPAN_DISPLAY failed: %s\n", strerror(errno));
-            return false;
-        }
-        
-        // 📊 统计和日志（每100帧打印一次）
-        fb_switch_count++;
-        if (fb_switch_count == 1 || fb_switch_count % 100 == 0) {
-            printf("🔄 [Framebuffer Switch Path] Frame #%d displayed (buffer_id=%u)\n",
-                   fb_switch_count, buffer_id);
-        }
-        
-        current_buffer_index_ = buffer_id;
-        return true;
+    // 获取当前屏幕信息
+    struct fb_var_screeninfo var_info;
+    if (ioctl(fd_, FBIOGET_VSCREENINFO, &var_info) < 0) {
+        printf("❌ ERROR: FBIOGET_VSCREENINFO failed: %s\n", strerror(errno));
+        return false;
     }
     
-    // ============ 路径3: Memcpy 路径（外部 Buffer，无物理地址）============
-fallback_memcpy:
-    {
-        // Buffer 不属于 framebuffer pool，需要 memcpy 到 framebuffer
-        
-        // 获取一个空闲的 framebuffer buffer 来接收数据
-        Buffer* fb_buffer = buffer_pool_->acquireFree(false, 0);  // 非阻塞获取
-        if (!fb_buffer) {
-            printf("❌ ERROR: No free framebuffer buffer available for memcpy\n");
-            return false;
-        }
-        
-        // 检查大小是否匹配
-        if (buffer->size() != fb_buffer->size()) {
-            printf("⚠️  Warning: Buffer size mismatch (%zu vs %zu), copying min size\n",
-                   buffer->size(), fb_buffer->size());
-        }
-        
-        size_t copy_size = (buffer->size() < fb_buffer->size()) ? buffer->size() : fb_buffer->size();
-        
-        // 执行 memcpy
-        memcpy(fb_buffer->getVirtualAddress(), 
-               buffer->getVirtualAddress(), 
-               copy_size);
-        
-        // 显示这个 framebuffer buffer
-        uint32_t fb_buffer_id = fb_buffer->id();
-        
-        // 获取当前屏幕信息
-        struct fb_var_screeninfo var_info;
-        if (ioctl(fd_, FBIOGET_VSCREENINFO, &var_info) < 0) {
-            printf("❌ ERROR: FBIOGET_VSCREENINFO failed: %s\n", strerror(errno));
-            // 错误：归还 buffer 到 free_queue（使用 releaseFilled 实现）
-            buffer_pool_->releaseFilled(fb_buffer);
-            return false;
-        }
-        
-        // 设置yoffset
-        var_info.yoffset = var_info.yres * fb_buffer_id;
-        
-        // 通过ioctl通知驱动切换buffer
-        if (ioctl(fd_, FBIOPAN_DISPLAY, &var_info) < 0) {
-            printf("❌ ERROR: FBIOPAN_DISPLAY failed: %s\n", strerror(errno));
-            // 错误：归还 buffer 到 free_queue
-            buffer_pool_->releaseFilled(fb_buffer);
-            return false;
-        }
-        
-        // 📊 统计和日志（每100帧打印一次）
-        memcpy_display_count++;
-        if (memcpy_display_count == 1 || memcpy_display_count % 100 == 0) {
-            printf("📋 [Memcpy Path] Frame #%d displayed (copied %zu bytes to fb_buffer[%u])\n",
-                   memcpy_display_count, copy_size, fb_buffer_id);
-        }
-        
-        // 🔧 关键：Display 完整管理 fb_buffer 的生命周期
-        // 一旦 FBIOPAN_DISPLAY 成功，硬件已经锁定这个 buffer 用于显示
-        // 我们可以立即归还 fb_buffer 到 free_queue，让它参与下一轮轮转
-        // 这是安全的，因为：
-        // 1. 硬件会继续显示这个 buffer（直到下次切换）
-        // 2. 有多个 framebuffer（通常4个），足够轮转
-        // 3. 符合正常的 acquireFilled → display → releaseFilled 模式
-        buffer_pool_->releaseFilled(fb_buffer);
-        
-        current_buffer_index_ = fb_buffer_id;
-        return true;
+    // 关键：yoffset 设为 0，因为 DMA 直接从物理地址读取
+    var_info.yoffset = 0;
+    
+    // 通知驱动显示（驱动会通过 DMA 从 phys_addr 读取数据）
+    if (ioctl(fd_, FBIOPAN_DISPLAY, &var_info) < 0) {
+        printf("❌ ERROR: FBIOPAN_DISPLAY failed: %s\n", strerror(errno));
+        return false;
     }
+    
+    // 统计和日志（每100帧打印一次）
+    display_count++;
+    if (display_count == 1 || display_count % 100 == 0) {
+        printf("🚀 [DMA Display] Frame #%d (phys_addr=0x%llx, buffer_id=%u)\n",
+               display_count, (unsigned long long)phys_addr, buffer->id());
+    }
+    
+    current_buffer_index_ = 0;  // DMA 模式下固定为 0
+    return true;
+}
+
+bool LinuxFramebufferDevice::displayFilledFramebuffer(Buffer* buffer) {
+    if (!is_initialized_) {
+        printf("❌ ERROR: Device not initialized\n");
+        return false;
+    }
+    
+    if (!buffer) {
+        printf("❌ ERROR: Null buffer pointer\n");
+        return false;
+    }
+    
+    if (!buffer_pool_) {
+        printf("❌ ERROR: BufferPool not initialized\n");
+        return false;
+    }
+    
+    // 从 buffer 对象中解析出 framebuffer id
+    uint32_t buffer_id = buffer->id();
+    
+    // 验证 buffer_id 在有效范围内
+    if (buffer_id >= static_cast<uint32_t>(buffer_count_)) {
+        printf("❌ ERROR: Invalid buffer id %u (valid range: 0-%d)\n", 
+               buffer_id, buffer_count_ - 1);
+        printf("   Hint: This buffer may not belong to this framebuffer's BufferPool\n");
+        return false;
+    }
+    
+    // 可选：验证这个 buffer 是否确实属于我们的 BufferPool
+    Buffer* pool_buffer = buffer_pool_->getBufferById(buffer_id);
+    if (pool_buffer != buffer) {
+        printf("❌ ERROR: Buffer (id=%u) does not belong to this framebuffer's BufferPool\n", 
+               buffer_id);
+        printf("   Buffer pointer: %p, Expected: %p\n", (void*)buffer, (void*)pool_buffer);
+        return false;
+    }
+    
+    // 静态计数器，用于日志节流
+    static int display_count = 0;
+    
+    // 获取当前屏幕信息
+    struct fb_var_screeninfo var_info;
+    if (ioctl(fd_, FBIOGET_VSCREENINFO, &var_info) < 0) {
+        printf("❌ ERROR: FBIOGET_VSCREENINFO failed: %s\n", strerror(errno));
+        return false;
+    }
+    
+    // 设置yoffset（buffer id * 屏幕高度）
+    var_info.yoffset = var_info.yres * buffer_id;
+    
+    // 通过ioctl通知驱动切换buffer
+    if (ioctl(fd_, FBIOPAN_DISPLAY, &var_info) < 0) {
+        printf("❌ ERROR: FBIOPAN_DISPLAY failed: %s\n", strerror(errno));
+        return false;
+    }
+    
+    // 统计和日志
+    display_count++;
+    if (display_count == 1 || display_count % 100 == 0) {
+        printf("🔄 [Framebuffer Switch] Frame #%d (buffer_id=%u)\n",
+               display_count, buffer_id);
+    }
+    
+    current_buffer_index_ = buffer_id;
+    return true;
+}
+
+bool LinuxFramebufferDevice::displayBufferByMemcpyToFramebuffer(Buffer* buffer) {
+    if (!is_initialized_) {
+        printf("❌ ERROR: Device not initialized\n");
+        return false;
+    }
+    
+    if (!buffer) {
+        printf("❌ ERROR: Null buffer pointer\n");
+        return false;
+    }
+    
+    if (!buffer_pool_) {
+        printf("❌ ERROR: BufferPool not initialized\n");
+        return false;
+    }
+    
+    // 静态计数器，用于日志节流
+    static int display_count = 0;
+    
+    // 获取一个空闲的 framebuffer buffer 来接收数据
+    Buffer* fb_buffer = buffer_pool_->acquireFree(false, 0);  // 非阻塞获取
+    if (!fb_buffer) {
+        printf("❌ ERROR: No free framebuffer buffer available\n");
+        printf("   Hint: All framebuffer buffers are busy, try again later\n");
+        return false;
+    }
+    
+    // 检查大小是否匹配
+    if (buffer->size() != fb_buffer->size()) {
+        printf("⚠️  Warning: Buffer size mismatch (%zu vs %zu), copying min size\n",
+               buffer->size(), fb_buffer->size());
+    }
+    
+    size_t copy_size = (buffer->size() < fb_buffer->size()) ? buffer->size() : fb_buffer->size();
+    
+    // 执行 memcpy
+    memcpy(fb_buffer->getVirtualAddress(), 
+           buffer->getVirtualAddress(), 
+           copy_size);
+    
+    // 显示这个 framebuffer buffer
+    uint32_t fb_buffer_id = fb_buffer->id();
+    
+    // 获取当前屏幕信息
+    struct fb_var_screeninfo var_info;
+    if (ioctl(fd_, FBIOGET_VSCREENINFO, &var_info) < 0) {
+        printf("❌ ERROR: FBIOGET_VSCREENINFO failed: %s\n", strerror(errno));
+        buffer_pool_->releaseFilled(fb_buffer);  // 归还 buffer
+        return false;
+    }
+    
+    // 设置yoffset
+    var_info.yoffset = var_info.yres * fb_buffer_id;
+    
+    // 通过ioctl通知驱动切换buffer
+    if (ioctl(fd_, FBIOPAN_DISPLAY, &var_info) < 0) {
+        printf("❌ ERROR: FBIOPAN_DISPLAY failed: %s\n", strerror(errno));
+        buffer_pool_->releaseFilled(fb_buffer);  // 归还 buffer
+        return false;
+    }
+    
+    // 统计和日志
+    display_count++;
+    if (display_count == 1 || display_count % 100 == 0) {
+        printf("📋 [Memcpy Display] Frame #%d (copied %zu bytes to fb_buffer[%u])\n",
+               display_count, copy_size, fb_buffer_id);
+    }
+    
+    // 归还 framebuffer buffer 到 free_queue
+    // 这是安全的，因为：
+    // 1. 硬件会继续显示这个 buffer（直到下次切换）
+    // 2. 有多个 framebuffer（通常4个），足够轮转
+    buffer_pool_->releaseFilled(fb_buffer);
+    
+    current_buffer_index_ = fb_buffer_id;
+    return true;
 }
 
