@@ -458,6 +458,31 @@ size_t BufferPool::getBufferSize() const {
     return buffer_size_;
 }
 
+bool BufferPool::setBufferSize(size_t size) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    // 参数校验
+    if (size == 0) {
+        printf("❌ ERROR: Cannot set buffer size to 0\n");
+        return false;
+    }
+    
+    // 只能在动态注入模式下设置（buffer_size_ == 0）
+    if (buffer_size_ != 0) {
+        printf("❌ ERROR: Buffer size already set to %zu, cannot modify\n", buffer_size_);
+        printf("   Hint: setBufferSize() only works for dynamic injection mode (initial size = 0)\n");
+        return false;
+    }
+    
+    // 设置 buffer 大小
+    buffer_size_ = size;
+    
+    printf("✅ Buffer size set to %zu bytes (%.2f MB) for pool '%s'\n", 
+           size, size / (1024.0 * 1024.0), name_.c_str());
+    
+    return true;
+}
+
 Buffer* BufferPool::getBufferById(uint32_t id) {
     auto it = buffer_map_.find(id);
     if (it != buffer_map_.end()) {
@@ -604,15 +629,15 @@ int BufferPool::exportBufferAsDmaBuf(uint32_t buffer_id) {
 // ============================================================
 
 bool BufferPool::verifyBufferOwnership(const Buffer* buffer) const {
-    // 检查 buffer 地址是否在 buffers_ 范围内
-    if (buffers_.empty()) {
+    if (!buffer) {
         return false;
     }
     
-    const Buffer* first = &buffers_.front();
-    const Buffer* last = &buffers_.back();
-    
-    return buffer >= first && buffer <= last;
+    // 使用 buffer_map_ 进行验证（适用于所有模式：预分配、外部托管、动态注入）
+    // 优点：O(1) 查询，统一逻辑，支持所有 BufferPool 构造方式
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = buffer_map_.find(buffer->id());
+    return (it != buffer_map_.end() && it->second == buffer);
 }
 
 uint64_t BufferPool::getPhysicalAddress(void* virt_addr) {
@@ -661,9 +686,10 @@ Buffer* BufferPool::injectFilledBuffer(std::unique_ptr<BufferHandle> handle) {
         transient_handles_[buffer_ptr] = std::move(handle);  // 保存handle（含deleter）
     }
     
-    // 3. 直接加入filled队列
+    // 3. 加入 buffer_map_（用于所有权验证）
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        buffer_map_[buffer_id] = buffer_ptr;
         filled_queue_.push(buffer_ptr);
     }
     
@@ -678,31 +704,41 @@ bool BufferPool::ejectBuffer(Buffer* buffer) {
         return false;
     }
     
-    std::lock_guard<std::mutex> lock(transient_mutex_);
+    uint32_t buffer_id = buffer->id();
     
-    // 查找并删除
-    auto handle_it = transient_handles_.find(buffer);
-    if (handle_it == transient_handles_.end()) {
-        return false;  // 不是临时buffer
-    }
-    
-    // 移除handle（会触发deleter）
-    transient_handles_.erase(handle_it);
-    
-    // 移除buffer对象
-    auto buffer_it = std::find_if(
-        transient_buffers_.begin(), 
-        transient_buffers_.end(),
-        [buffer](const std::unique_ptr<Buffer>& b) {
-            return b.get() == buffer;
+    // 从 transient_buffers_ 和 transient_handles_ 中移除
+    {
+        std::lock_guard<std::mutex> lock(transient_mutex_);
+        
+        // 查找并删除
+        auto handle_it = transient_handles_.find(buffer);
+        if (handle_it == transient_handles_.end()) {
+            return false;  // 不是临时buffer
         }
-    );
-    
-    if (buffer_it != transient_buffers_.end()) {
-        transient_buffers_.erase(buffer_it);
-        return true;
+        
+        // 移除handle（会触发deleter）
+        transient_handles_.erase(handle_it);
+        
+        // 移除buffer对象
+        auto buffer_it = std::find_if(
+            transient_buffers_.begin(), 
+            transient_buffers_.end(),
+            [buffer](const std::unique_ptr<Buffer>& b) {
+                return b.get() == buffer;
+            }
+        );
+        
+        if (buffer_it != transient_buffers_.end()) {
+            transient_buffers_.erase(buffer_it);
+        }
     }
     
-    return false;
+    // 从 buffer_map_ 中移除（用于所有权验证）
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        buffer_map_.erase(buffer_id);
+    }
+    
+    return true;
 }
 

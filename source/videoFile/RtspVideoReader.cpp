@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <chrono>
+#include <climits>  // for INT_MAX
 
 // FFmpeg headers
 extern "C" {
@@ -194,8 +195,10 @@ bool RtspVideoReader::skip(int frame_count) {
 }
 
 int RtspVideoReader::getTotalFrames() const {
-    // RTSP实时流没有总帧数概念
-    return -1;
+    // RTSP 实时流是无限的，返回一个很大的值以适配 VideoProducer 的接口
+    // 这样可以通过边界检查 (frame_index >= total_frames_)，同时不影响实际使用
+    // 注意：RTSP 流并不依赖这个值，只是为了接口兼容性
+    return INT_MAX;
 }
 
 int RtspVideoReader::getCurrentFrameIndex() const {

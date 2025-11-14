@@ -208,6 +208,32 @@ public:
     size_t getBufferSize() const;
     
     /**
+     * @brief 设置 buffer 大小（仅用于动态注入模式）
+     * 
+     * 适用场景：
+     * - 动态注入模式下，初始 buffer_size_ == 0
+     * - 第一次解码/接收到帧后，需要设置 buffer 大小
+     * - 设置后锁定，不允许修改，确保所有注入的 buffer 大小一致
+     * 
+     * @param size Buffer 大小（字节）
+     * @return true 设置成功，false 设置失败（已经设置过或参数无效）
+     * 
+     * @note 线程安全：内部使用 mutex 保护
+     * @note 仅在 buffer_size_ == 0 时可以设置（动态注入模式）
+     * @note 设置后不可修改，确保所有注入的 buffer 大小一致
+     * 
+     * 使用示例：
+     * @code
+     * BufferPool pool("RTSP_Pool", "RTSP", 10);  // 动态注入模式
+     * // ... 解码第一帧，得到 frame_size
+     * if (pool.getBufferSize() == 0) {
+     *     pool.setBufferSize(frame_size);  // 设置 buffer 大小
+     * }
+     * @endcode
+     */
+    bool setBufferSize(size_t size);
+    
+    /**
      * @brief 通过 ID 查找 buffer
      * @param id Buffer ID
      * @return Buffer* 成功返回 buffer，失败返回 nullptr

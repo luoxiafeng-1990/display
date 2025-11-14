@@ -6,9 +6,11 @@
 !_TAG_PROGRAM_URL	https://ctags.io/	/official site/
 !_TAG_PROGRAM_VERSION	0.0.0	//
 1. C++ 类型系统	cpp_compile_error.md	/^### 1. C++ 类型系统$/;"	S	language:Markdown
+1. `.` 操作符 - 访问 unique_ptr 自己的成员	cpp_compile_error.md	/^#### 1. `.` 操作符 - 访问 unique_ptr 自己的成员$/;"	t	language:Markdown
 1. 命名规范	source/buffer/buffer_design.md	/^#### 1. 命名规范$/;"	t	language:Markdown
 1. 快速定位缺少头文件	cpp_compile_error.md	/^### 1. 快速定位缺少头文件$/;"	S	language:Markdown
 1. 设计目标	source/buffer/buffer_design.md	/^## 1. 设计目标$/;"	s	language:Markdown
+1. 逐级降级策略	include/display/display_buffer_usage_guide.md	/^### 1. 逐级降级策略$/;"	S	language:Markdown
 1.1 核心诉求	source/buffer/buffer_design.md	/^### 1.1 核心诉求$/;"	S	language:Markdown
 1.2 与原设计的对比	source/buffer/buffer_design.md	/^### 1.2 与原设计的对比$/;"	S	language:Markdown
 10. 实现状态	source/buffer/buffer_design.md	/^## 10. 实现状态$/;"	s	language:Markdown
@@ -33,15 +35,21 @@
 13.7 性能特性	source/buffer/buffer_design.md	/^### 13.7 性能特性$/;"	S	language:Markdown
 13.8 最佳实践	source/buffer/buffer_design.md	/^### 13.8 最佳实践$/;"	S	language:Markdown
 13.9 与设计文档其他部分的关联	source/buffer/buffer_design.md	/^### 13.9 与设计文档其他部分的关联$/;"	S	language:Markdown
+1️⃣ displayBufferByDMA - DMA 零拷贝显示	include/display/display_buffer_usage_guide.md	/^## 1️⃣ displayBufferByDMA - DMA 零拷贝显示$/;"	s	language:Markdown
+2. `->` 操作符 - 访问被管理对象的成员	cpp_compile_error.md	/^#### 2. `->` 操作符 - 访问被管理对象的成员$/;"	t	language:Markdown
 2. std::atomic 特殊性	cpp_compile_error.md	/^### 2. std::atomic 特殊性$/;"	S	language:Markdown
 2. 分类规范	source/buffer/buffer_design.md	/^#### 2. 分类规范$/;"	t	language:Markdown
+2. 显式错误检查	include/display/display_buffer_usage_guide.md	/^### 2. 显式错误检查$/;"	S	language:Markdown
 2. 架构概览	source/buffer/buffer_design.md	/^## 2. 架构概览$/;"	s	language:Markdown
 2. 检查是否为聚合类型	cpp_compile_error.md	/^### 2. 检查是否为聚合类型$/;"	S	language:Markdown
 2.1 分层架构	source/buffer/buffer_design.md	/^### 2.1 分层架构$/;"	S	language:Markdown
 2.2 核心组件关系	source/buffer/buffer_design.md	/^### 2.2 核心组件关系$/;"	S	language:Markdown
+2️⃣ displayFilledFramebuffer - 显示已填充的 Framebuffer	include/display/display_buffer_usage_guide.md	/^## 2️⃣ displayFilledFramebuffer - 显示已填充的 Framebuffer$/;"	s	language:Markdown
+3. `*` 操作符 - 解引用，获取对象引用	cpp_compile_error.md	/^#### 3. `*` 操作符 - 解引用，获取对象引用$/;"	t	language:Markdown
 3. 查看模板实例化错误	cpp_compile_error.md	/^### 3. 查看模板实例化错误$/;"	S	language:Markdown
 3. 核心组件设计	source/buffer/buffer_design.md	/^## 3. 核心组件设计$/;"	s	language:Markdown
 3. 监控策略	source/buffer/buffer_design.md	/^#### 3. 监控策略$/;"	t	language:Markdown
+3. 超时保护	include/display/display_buffer_usage_guide.md	/^### 3. 超时保护$/;"	S	language:Markdown
 3. 默认参数限制	cpp_compile_error.md	/^### 3. 默认参数限制$/;"	S	language:Markdown
 3.1 Buffer 类（元数据）	source/buffer/buffer_design.md	/^### 3.1 Buffer 类（元数据）$/;"	S	language:Markdown
 3.2 BufferHandle 类（外部Buffer包装）	source/buffer/buffer_design.md	/^### 3.2 BufferHandle 类（外部Buffer包装）$/;"	S	language:Markdown
@@ -49,6 +57,7 @@
 3.3.1 构造方式	source/buffer/buffer_design.md	/^#### 3.3.1 构造方式$/;"	t	language:Markdown
 3.3.2 核心接口	source/buffer/buffer_design.md	/^#### 3.3.2 核心接口$/;"	t	language:Markdown
 3.4 BufferAllocator（策略模式）	source/buffer/buffer_design.md	/^### 3.4 BufferAllocator（策略模式）$/;"	S	language:Markdown
+3️⃣ displayBufferByMemcpyToFramebuffer - 拷贝显示	include/display/display_buffer_usage_guide.md	/^## 3️⃣ displayBufferByMemcpyToFramebuffer - 拷贝显示$/;"	s	language:Markdown
 4. 头文件依赖	cpp_compile_error.md	/^### 4. 头文件依赖$/;"	S	language:Markdown
 4. 构建系统清理	cpp_compile_error.md	/^### 4. 构建系统清理$/;"	S	language:Markdown
 4. 物理内存管理	source/buffer/buffer_design.md	/^## 4. 物理内存管理$/;"	s	language:Markdown
@@ -56,11 +65,12 @@
 4.1 物理地址获取（通过 /proc/self/pagemap）	source/buffer/buffer_design.md	/^### 4.1 物理地址获取（通过 \/proc\/self\/pagemap）$/;"	S	language:Markdown
 4.2 CMA/DMA-BUF 分配（连续物理内存）	source/buffer/buffer_design.md	/^### 4.2 CMA\/DMA-BUF 分配（连续物理内存）$/;"	S	language:Markdown
 5. 外部Buffer生命周期管理	source/buffer/buffer_design.md	/^## 5. 外部Buffer生命周期管理$/;"	s	language:Markdown
-5. 重构最佳实践	cpp_compile_error.md	/^### 5. 重构最佳实践$/;"	S	language:Markdown
+5. 智能指针操作符	cpp_compile_error.md	/^### 5. 智能指针操作符$/;"	S	language:Markdown
 5.1 问题场景	source/buffer/buffer_design.md	/^### 5.1 问题场景$/;"	S	language:Markdown
 5.2 解决方案：weak_ptr 语义	source/buffer/buffer_design.md	/^### 5.2 解决方案：weak_ptr 语义$/;"	S	language:Markdown
 5.3 引用计数辅助	source/buffer/buffer_design.md	/^### 5.3 引用计数辅助$/;"	S	language:Markdown
 6. 使用场景与示例	source/buffer/buffer_design.md	/^## 6. 使用场景与示例$/;"	s	language:Markdown
+6. 重构最佳实践	cpp_compile_error.md	/^### 6. 重构最佳实践$/;"	S	language:Markdown
 6.1 场景1：自有Buffer（视频播放）	source/buffer/buffer_design.md	/^### 6.1 场景1：自有Buffer（视频播放）$/;"	S	language:Markdown
 6.2 场景2：托管DRM Framebuffer	source/buffer/buffer_design.md	/^### 6.2 场景2：托管DRM Framebuffer$/;"	S	language:Markdown
 6.3 场景3：GPU共享（CUDA + 显示）	source/buffer/buffer_design.md	/^### 6.3 场景3：GPU共享（CUDA + 显示）$/;"	S	language:Markdown
@@ -101,6 +111,7 @@ BufferHandle	source/buffer/BufferHandle.cpp	/^BufferHandle::BufferHandle(BufferH
 BufferHandle	source/buffer/BufferHandle.cpp	/^BufferHandle::BufferHandle(void* virt_addr, $/;"	f	language:C++	class:BufferHandle	signature:(void * virt_addr,uint64_t phys_addr,size_t size,Deleter deleter)
 BufferManager	include/buffer/BufferManager.hpp	/^class BufferManager {$/;"	c	language:C++
 BufferPool	include/buffer/BufferPool.hpp	/^class BufferPool {$/;"	c	language:C++
+BufferPool	source/buffer/BufferPool.cpp	/^BufferPool::BufferPool(const std::string name, const std::string category, size_t max_capacity)$/;"	f	language:C++	class:BufferPool	signature:(const std::string name,const std::string category,size_t max_capacity)
 BufferPool	source/buffer/BufferPool.cpp	/^BufferPool::BufferPool(const std::vector<ExternalBufferInfo>& external_buffers,$/;"	f	language:C++	class:BufferPool	signature:(const std::vector<ExternalBufferInfo> & external_buffers,const std::string name,const std::string category)
 BufferPool	source/buffer/BufferPool.cpp	/^BufferPool::BufferPool(int count, size_t size, bool use_cma,$/;"	f	language:C++	class:BufferPool	signature:(int count,size_t size,bool use_cma,const std::string name,const std::string category)
 BufferPool	source/buffer/BufferPool.cpp	/^BufferPool::BufferPool(std::vector<std::unique_ptr<BufferHandle>> handles,$/;"	f	language:C++	class:BufferPool	signature:(std::vector<std::unique_ptr<BufferHandle>> handles,const std::string name,const std::string category)
@@ -122,7 +133,7 @@ COMPONENTS_SITE	components.mk	/^COMPONENTS_SITE = ..\/packages\/components$/;"	m
 COMPONENTS_SITE_METHOD	components.mk	/^COMPONENTS_SITE_METHOD = local$/;"	m	language:Make
 COMPONENTS_VERSION	components.mk	/^COMPONENTS_VERSION = 1.0$/;"	m	language:Make
 Config	include/producer/VideoProducer.hpp	/^        Config() $/;"	f	language:C++	struct:VideoProducer::Config	signature:()
-Config	include/producer/VideoProducer.hpp	/^        Config(const std::string& path, int w, int h, int bpp, bool l = false, int tc = 1)$/;"	f	language:C++	struct:VideoProducer::Config	signature:(const std::string & path,int w,int h,int bpp,bool l=false,int tc=1)
+Config	include/producer/VideoProducer.hpp	/^        Config(const std::string& path, int w, int h, int bpp, bool l = false, int tc = 1,$/;"	f	language:C++	struct:VideoProducer::Config	signature:(const std::string & path,int w,int h,int bpp,bool l=false,int tc=1,VideoReaderFactory::ReaderType rt=VideoReaderFactory::ReaderType::AUTO)
 Config	include/producer/VideoProducer.hpp	/^    struct Config {$/;"	s	language:C++	class:VideoProducer
 DEBUG	configure.ac	/^AM_CONDITIONAL([DEBUG], [test "x$enable_debug" = "xyes"])$/;"	c	language:Autoconf
 DEV_FB0	source/display/LinuxFramebufferDevice.cpp	/^#define DEV_FB0 /;"	d	language:C++	file:
@@ -161,6 +172,7 @@ LOCKED_BY_CONSUMER	include/buffer/Buffer.hpp	/^        LOCKED_BY_CONSUMER       
 LOCKED_BY_PRODUCER	include/buffer/Buffer.hpp	/^        LOCKED_BY_PRODUCER,      \/\/ 被生产者锁定，正在填充数据$/;"	e	language:C++	enum:Buffer::State
 LinuxFramebufferDevice	include/display/LinuxFramebufferDevice.hpp	/^class LinuxFramebufferDevice : public IDisplayDevice {$/;"	c	language:C++
 LinuxFramebufferDevice	source/display/LinuxFramebufferDevice.cpp	/^LinuxFramebufferDevice::LinuxFramebufferDevice()$/;"	f	language:C++	class:LinuxFramebufferDevice	signature:()
+LinuxFramebufferDevice 显示方法使用指南	include/display/display_buffer_usage_guide.md	/^# LinuxFramebufferDevice 显示方法使用指南$/;"	c	language:Markdown
 MAGIC_NUMBER	include/buffer/Buffer.hpp	/^    static constexpr uint32_t MAGIC_NUMBER = 0xBEEFF123;  \/\/ 魔数：BEEF + F123$/;"	m	language:C++	class:Buffer	typeref:typename:uint32_t
 MAX_PATH_LENGTH	include/videoFile/MmapVideoReader.hpp	/^#define MAX_PATH_LENGTH /;"	d	language:C++
 MAX_RTSP_PATH_LENGTH	include/videoFile/RtspVideoReader.hpp	/^#define MAX_RTSP_PATH_LENGTH /;"	d	language:C++
@@ -240,7 +252,7 @@ beginDecodeFrameTiming	source/monitor/PerformanceMonitor.cpp	/^void PerformanceM
 beginDisplayFrameTiming	source/monitor/PerformanceMonitor.cpp	/^void PerformanceMonitor::beginDisplayFrameTiming() {$/;"	f	language:C++	class:PerformanceMonitor	typeref:typename:void	signature:()
 beginLoadFrameTiming	source/monitor/PerformanceMonitor.cpp	/^void PerformanceMonitor::beginLoadFrameTiming() {$/;"	f	language:C++	class:PerformanceMonitor	typeref:typename:void	signature:()
 bin_PROGRAMS	Makefile.am	/^bin_PROGRAMS = display_test$/;"	m	language:Make
-bits_per_pixel	include/producer/VideoProducer.hpp	/^        int bits_per_pixel;         \/\/ 每像素位数（8\/16\/24\/32）$/;"	m	language:C++	struct:VideoProducer::Config	typeref:typename:int
+bits_per_pixel	include/producer/VideoProducer.hpp	/^        int bits_per_pixel;                            \/\/ 每像素位数（8\/16\/24\/32）$/;"	m	language:C++	struct:VideoProducer::Config	typeref:typename:int
 bits_per_pixel_	include/display/LinuxFramebufferDevice.hpp	/^    int bits_per_pixel_;              \/\/ 每像素位数（可以是非整数字节，如12bit/;"	m	language:C++	class:LinuxFramebufferDevice	typeref:typename:int
 bits_per_pixel_	include/videoFile/IoUringVideoReader.hpp	/^    int bits_per_pixel_;$/;"	m	language:C++	class:IoUringVideoReader	typeref:typename:int
 bits_per_pixel_	include/videoFile/MmapVideoReader.hpp	/^    int bits_per_pixel_;              \/\/ 每像素位数$/;"	m	language:C++	class:MmapVideoReader	typeref:typename:int
@@ -298,8 +310,10 @@ deleter_	include/buffer/BufferHandle.hpp	/^    Deleter deleter_;           \/\/ 
 detectFileFormat	source/videoFile/MmapVideoReader.cpp	/^MmapVideoReader::FileFormat MmapVideoReader::detectFileFormat() {$/;"	f	language:C++	class:MmapVideoReader	typeref:typename:MmapVideoReader::FileFormat	signature:()
 detected_format_	include/videoFile/MmapVideoReader.hpp	/^    FileFormat detected_format_;$/;"	m	language:C++	class:MmapVideoReader	typeref:typename:FileFormat
 disconnectRTSP	source/videoFile/RtspVideoReader.cpp	/^void RtspVideoReader::disconnectRTSP() {$/;"	f	language:C++	class:RtspVideoReader	typeref:typename:void	signature:()
-displayBuffer	source/display/LinuxFramebufferDevice.cpp	/^bool LinuxFramebufferDevice::displayBuffer(Buffer* buffer) {$/;"	f	language:C++	class:LinuxFramebufferDevice	typeref:typename:bool	signature:(Buffer * buffer)
 displayBuffer	source/display/LinuxFramebufferDevice.cpp	/^bool LinuxFramebufferDevice::displayBuffer(int buffer_index) {$/;"	f	language:C++	class:LinuxFramebufferDevice	typeref:typename:bool	signature:(int buffer_index)
+displayBufferByDMA	source/display/LinuxFramebufferDevice.cpp	/^bool LinuxFramebufferDevice::displayBufferByDMA(Buffer* buffer) {$/;"	f	language:C++	class:LinuxFramebufferDevice	typeref:typename:bool	signature:(Buffer * buffer)
+displayBufferByMemcpyToFramebuffer	source/display/LinuxFramebufferDevice.cpp	/^bool LinuxFramebufferDevice::displayBufferByMemcpyToFramebuffer(Buffer* buffer) {$/;"	f	language:C++	class:LinuxFramebufferDevice	typeref:typename:bool	signature:(Buffer * buffer)
+displayFilledFramebuffer	source/display/LinuxFramebufferDevice.cpp	/^bool LinuxFramebufferDevice::displayFilledFramebuffer(Buffer* buffer) {$/;"	f	language:C++	class:LinuxFramebufferDevice	typeref:typename:bool	signature:(Buffer * buffer)
 display_start_	include/monitor/PerformanceMonitor.hpp	/^    std::chrono::steady_clock::time_point display_start_;$/;"	m	language:C++	class:PerformanceMonitor	typeref:typename:std::chrono::steady_clock::time_point
 display_test	Makefile.am	/^bin_PROGRAMS = display_test$/;"	P	language:Automake	directory:bin
 display_test_SOURCES	Makefile.am	/^display_test_SOURCES = test.cpp \\$/;"	m	language:Make
@@ -330,7 +344,7 @@ fd	source/buffer/BufferAllocator.cpp	/^    unsigned int fd;$/;"	m	language:C++	s
 fd_	include/display/LinuxFramebufferDevice.hpp	/^    int fd_;                          \/\/ framebuffer文件描述符$/;"	m	language:C++	class:LinuxFramebufferDevice	typeref:typename:int
 fd_	include/videoFile/MmapVideoReader.hpp	/^    int fd_;                          \/\/ 文件描述符$/;"	m	language:C++	class:MmapVideoReader	typeref:typename:int
 fd_flags	source/buffer/BufferAllocator.cpp	/^    unsigned int fd_flags;$/;"	m	language:C++	struct:dma_heap_allocation_data	typeref:typename:unsigned int	file:
-file_path	include/producer/VideoProducer.hpp	/^        std::string file_path;      \/\/ 视频文件路径$/;"	m	language:C++	struct:VideoProducer::Config	typeref:typename:std::string
+file_path	include/producer/VideoProducer.hpp	/^        std::string file_path;                         \/\/ 视频文件路径$/;"	m	language:C++	struct:VideoProducer::Config	typeref:typename:std::string
 file_size_	include/videoFile/IoUringVideoReader.hpp	/^    long file_size_;$/;"	m	language:C++	class:IoUringVideoReader	typeref:typename:long
 file_size_	include/videoFile/MmapVideoReader.hpp	/^    long file_size_;                  \/\/ 文件大小（字节）$/;"	m	language:C++	class:MmapVideoReader	typeref:typename:long
 filled	include/videoFile/RtspVideoReader.hpp	/^        bool filled;                   \/\/ 是否已填充$/;"	m	language:C++	struct:RtspVideoReader::FrameSlot	typeref:typename:bool
@@ -455,7 +469,7 @@ hasMoreFrames	source/videoFile/MmapVideoReader.cpp	/^bool MmapVideoReader::hasMo
 hasMoreFrames	source/videoFile/RtspVideoReader.cpp	/^bool RtspVideoReader::hasMoreFrames() const {$/;"	f	language:C++	class:RtspVideoReader	typeref:typename:bool	signature:() const
 hasMoreFrames	source/videoFile/VideoFile.cpp	/^bool VideoFile::hasMoreFrames() const {$/;"	f	language:C++	class:VideoFile	typeref:typename:bool	signature:() const
 heap_flags	source/buffer/BufferAllocator.cpp	/^    unsigned long heap_flags;$/;"	m	language:C++	struct:dma_heap_allocation_data	typeref:typename:unsigned long	file:
-height	include/producer/VideoProducer.hpp	/^        int height;                 \/\/ 分辨率高度$/;"	m	language:C++	struct:VideoProducer::Config	typeref:typename:int
+height	include/producer/VideoProducer.hpp	/^        int height;                                    \/\/ 分辨率高度$/;"	m	language:C++	struct:VideoProducer::Config	typeref:typename:int
 height_	include/display/LinuxFramebufferDevice.hpp	/^    int height_;                      \/\/ 显示高度（像素）$/;"	m	language:C++	class:LinuxFramebufferDevice	typeref:typename:int
 height_	include/videoFile/IoUringVideoReader.hpp	/^    int height_;$/;"	m	language:C++	class:IoUringVideoReader	typeref:typename:int
 height_	include/videoFile/MmapVideoReader.hpp	/^    int height_;                      \/\/ 视频高度（像素）$/;"	m	language:C++	class:MmapVideoReader	typeref:typename:int
@@ -501,13 +515,14 @@ last_report_time_	include/monitor/PerformanceMonitor.hpp	/^    std::chrono::stea
 len	source/buffer/BufferAllocator.cpp	/^    unsigned long len;$/;"	m	language:C++	struct:dma_heap_allocation_data	typeref:typename:unsigned long	file:
 lifetime_trackers_	include/buffer/BufferPool.hpp	/^    std::vector<std::weak_ptr<bool>> lifetime_trackers_;           \/\/ 生命周期检测$/;"	m	language:C++	class:BufferPool	typeref:typename:std::vector<std::weak_ptr<bool>>
 load_start_	include/monitor/PerformanceMonitor.hpp	/^    std::chrono::steady_clock::time_point load_start_;$/;"	m	language:C++	class:PerformanceMonitor	typeref:typename:std::chrono::steady_clock::time_point
-loop	include/producer/VideoProducer.hpp	/^        bool loop;                  \/\/ 是否循环播放$/;"	m	language:C++	struct:VideoProducer::Config	typeref:typename:bool
+loop	include/producer/VideoProducer.hpp	/^        bool loop;                                     \/\/ 是否循环播放$/;"	m	language:C++	struct:VideoProducer::Config	typeref:typename:bool
 main	test.cpp	/^int main(int argc, char* argv[]) {$/;"	f	language:C++	typeref:typename:int	signature:(int argc,char * argv[])
 manager	include/videoFile/IoUringVideoReader.hpp	/^        BufferManager* manager;   \/\/ BufferManager指针$/;"	m	language:C++	struct:IoUringVideoReader::ReadRequest	typeref:typename:BufferManager *
 mapFile	source/videoFile/MmapVideoReader.cpp	/^bool MmapVideoReader::mapFile() {$/;"	f	language:C++	class:MmapVideoReader	typeref:typename:bool	signature:()
 mapHardwareFramebufferMemory	source/display/LinuxFramebufferDevice.cpp	/^bool LinuxFramebufferDevice::mapHardwareFramebufferMemory() {$/;"	f	language:C++	class:LinuxFramebufferDevice	typeref:typename:bool	signature:()
 mapped_file_	include/videoFile/MmapVideoReader.hpp	/^    void* mapped_file_;               \/\/ mmap映射的文件地址$/;"	m	language:C++	class:MmapVideoReader	typeref:typename:void *
 mapped_size_	include/videoFile/MmapVideoReader.hpp	/^    size_t mapped_size_;              \/\/ 映射的文件大小$/;"	m	language:C++	class:MmapVideoReader	typeref:typename:size_t
+max_capacity_	include/buffer/BufferPool.hpp	/^    size_t max_capacity_;                             \/\/ 最大容量限制（0 表示无限制/;"	m	language:C++	class:BufferPool	typeref:typename:size_t
 memory_blocks_	include/buffer/BufferManager.hpp	/^    std::vector<void*> memory_blocks_;   \/\/ 物理内存块指针（用于释放）$/;"	m	language:C++	class:BufferManager	typeref:typename:std::vector<void * >
 mutex_	include/buffer/BufferManager.hpp	/^    mutable std::mutex mutex_;           \/\/ 互斥锁$/;"	m	language:C++	class:BufferManager	typeref:typename:std::mutex
 mutex_	include/buffer/BufferPool.hpp	/^    mutable std::mutex mutex_;            \/\/ 保护队列和状态$/;"	m	language:C++	class:BufferPool	typeref:typename:std::mutex
@@ -591,6 +606,7 @@ readFrameTo	source/videoFile/VideoFile.cpp	/^bool VideoFile::readFrameTo(Buffer&
 readFrameTo	source/videoFile/VideoFile.cpp	/^bool VideoFile::readFrameTo(void* dest_buffer, size_t buffer_size) {$/;"	f	language:C++	class:VideoFile	typeref:typename:bool	signature:(void * dest_buffer,size_t buffer_size)
 read_index_	include/videoFile/RtspVideoReader.hpp	/^    int read_index_;                   \/\/ 读取索引$/;"	m	language:C++	class:RtspVideoReader	typeref:typename:int
 reader_	include/videoFile/VideoFile.hpp	/^    std::unique_ptr<IVideoReader> reader_;  \/\/ 实际的读取器实现$/;"	m	language:C++	class:VideoFile	typeref:typename:std::unique_ptr<IVideoReader>
+reader_type	include/producer/VideoProducer.hpp	/^        VideoReaderFactory::ReaderType reader_type;    \/\/ 读取器类型（默认AUTO）$/;"	m	language:C++	struct:VideoProducer::Config	typeref:typename:VideoReaderFactory::ReaderType
 recordFrameDecoded	source/monitor/PerformanceMonitor.cpp	/^void PerformanceMonitor::recordFrameDecoded() {$/;"	f	language:C++	class:PerformanceMonitor	typeref:typename:void	signature:()
 recordFrameDisplayed	source/monitor/PerformanceMonitor.cpp	/^void PerformanceMonitor::recordFrameDisplayed() {$/;"	f	language:C++	class:PerformanceMonitor	typeref:typename:void	signature:()
 recordFrameLoaded	source/monitor/PerformanceMonitor.cpp	/^void PerformanceMonitor::recordFrameLoaded() {$/;"	f	language:C++	class:PerformanceMonitor	typeref:typename:void	signature:()
@@ -669,7 +685,7 @@ test_rtsp_stream	test.cpp	/^static int test_rtsp_stream(const char* rtsp_url) {$
 test_sequential_playback	test.cpp	/^static int test_sequential_playback(const char* raw_video_path) {$/;"	f	language:C++	typeref:typename:int	file:	signature:(const char * raw_video_path)
 this is probably fixable by adding '#include <stdexcept>'	cpp_compile_error.md	/^#       this is probably fixable by adding '#include <stdexcept>'$/;"	c	language:Markdown
 thread_	include/monitor/Timer.hpp	/^    std::thread thread_;$/;"	m	language:C++	class:Timer	typeref:typename:std::thread
-thread_count	include/producer/VideoProducer.hpp	/^        int thread_count;           \/\/ 生产者线程数（默认1）$/;"	m	language:C++	struct:VideoProducer::Config	typeref:typename:int
+thread_count	include/producer/VideoProducer.hpp	/^        int thread_count;                              \/\/ 生产者线程数（默认1）$/;"	m	language:C++	struct:VideoProducer::Config	typeref:typename:int
 threads_	include/producer/VideoProducer.hpp	/^    std::vector<std::thread> threads_;$/;"	m	language:C++	class:VideoProducer	typeref:typename:std::vector<std::thread>
 timerLoop	source/monitor/Timer.cpp	/^void Timer::timerLoop() {$/;"	f	language:C++	class:Timer	typeref:typename:void	signature:()
 timestamp	include/videoFile/RtspVideoReader.hpp	/^        uint64_t timestamp;            \/\/ 时间戳$/;"	m	language:C++	struct:RtspVideoReader::FrameSlot	typeref:typename:uint64_t
@@ -694,6 +710,7 @@ transient_buffers_	include/buffer/BufferPool.hpp	/^    std::vector<std::unique_p
 transient_handles_	include/buffer/BufferPool.hpp	/^    std::unordered_map<Buffer*, std::unique_ptr<BufferHandle>> transient_handles_;  \/\/ Buffer*/;"	m	language:C++	class:BufferPool	typeref:typename:std::unordered_map<Buffer *,std::unique_ptr<BufferHandle>>
 transient_mutex_	include/buffer/BufferPool.hpp	/^    std::mutex transient_mutex_;          \/\/ 保护临时buffer列表$/;"	m	language:C++	class:BufferPool	typeref:typename:std::mutex
 typeToString	source/videoFile/VideoReaderFactory.cpp	/^const char* VideoReaderFactory::typeToString(ReaderType type) {$/;"	f	language:C++	class:VideoReaderFactory	typeref:typename:const char *	signature:(ReaderType type)
+unique_ptr 的简化实现（伪代码）	cpp_compile_error.md	/^### unique_ptr 的简化实现（伪代码）$/;"	S	language:Markdown
 unmapFile	source/videoFile/MmapVideoReader.cpp	/^void MmapVideoReader::unmapFile() {$/;"	f	language:C++	class:MmapVideoReader	typeref:typename:void	signature:()
 unmapHardwareFramebufferMemory	source/display/LinuxFramebufferDevice.cpp	/^void LinuxFramebufferDevice::unmapHardwareFramebufferMemory() {$/;"	f	language:C++	class:LinuxFramebufferDevice	typeref:typename:void	signature:()
 unregisterPool	source/buffer/BufferPoolRegistry.cpp	/^void BufferPoolRegistry::unregisterPool(uint64_t id) {$/;"	f	language:C++	class:BufferPoolRegistry	typeref:typename:void	signature:(uint64_t id)
@@ -716,7 +733,7 @@ virt_addr	include/buffer/BufferPool.hpp	/^        void* virt_addr;        \/\/ �
 virt_addr_	include/buffer/Buffer.hpp	/^    void* virt_addr_;                \/\/ 虚拟地址（用户空间）$/;"	m	language:C++	class:Buffer	typeref:typename:void *
 virt_addr_	include/buffer/BufferHandle.hpp	/^    void* virt_addr_;           \/\/ 虚拟地址$/;"	m	language:C++	class:BufferHandle	typeref:typename:void *
 waitVerticalSync	source/display/LinuxFramebufferDevice.cpp	/^bool LinuxFramebufferDevice::waitVerticalSync() {$/;"	f	language:C++	class:LinuxFramebufferDevice	typeref:typename:bool	signature:()
-width	include/producer/VideoProducer.hpp	/^        int width;                  \/\/ 分辨率宽度$/;"	m	language:C++	struct:VideoProducer::Config	typeref:typename:int
+width	include/producer/VideoProducer.hpp	/^        int width;                                     \/\/ 分辨率宽度$/;"	m	language:C++	struct:VideoProducer::Config	typeref:typename:int
 width_	include/display/LinuxFramebufferDevice.hpp	/^    int width_;                       \/\/ 显示宽度（像素）$/;"	m	language:C++	class:LinuxFramebufferDevice	typeref:typename:int
 width_	include/videoFile/IoUringVideoReader.hpp	/^    int width_;$/;"	m	language:C++	class:IoUringVideoReader	typeref:typename:int
 width_	include/videoFile/MmapVideoReader.hpp	/^    int width_;                       \/\/ 视频宽度（像素）$/;"	m	language:C++	class:MmapVideoReader	typeref:typename:int
@@ -740,15 +757,32 @@ write_index_	include/videoFile/RtspVideoReader.hpp	/^    int write_index_;      
 ✅ 总结	cpp_compile_error.md	/^## ✅ 总结$/;"	s	language:Markdown
 ✅ 新配置	cpp_compile_error.md	/^# ✅ 新配置$/;"	c	language:Markdown
 ❌ 旧配置	cpp_compile_error.md	/^# ❌ 旧配置$/;"	c	language:Markdown
+三种访问方式详解	cpp_compile_error.md	/^### 三种访问方式详解$/;"	S	language:Markdown
+与原始指针的对比	cpp_compile_error.md	/^### 与原始指针的对比$/;"	S	language:Markdown
 书籍推荐	cpp_compile_error.md	/^### 书籍推荐$/;"	S	language:Markdown
+代码示例	include/display/display_buffer_usage_guide.md	/^### 代码示例$/;"	S	language:Markdown
 使用 -ftemplate-backtrace-limit=0 查看完整模板错误	cpp_compile_error.md	/^# 使用 -ftemplate-backtrace-limit=0 查看完整模板错误$/;"	c	language:Markdown
+使用场景对比	cpp_compile_error.md	/^### 使用场景对比$/;"	S	language:Markdown
+使用要求	include/display/display_buffer_usage_guide.md	/^### 使用要求$/;"	S	language:Markdown
 全局监控接口	source/buffer/buffer_design.md	/^#### 全局监控接口$/;"	t	language:Markdown
+内存结构示意	cpp_compile_error.md	/^### 内存结构示意$/;"	S	language:Markdown
+函数签名	include/display/display_buffer_usage_guide.md	/^### 函数签名$/;"	S	language:Markdown
 删除旧的编译产物	cpp_compile_error.md	/^# 删除旧的编译产物$/;"	c	language:Markdown
+功能描述	include/display/display_buffer_usage_guide.md	/^### 功能描述$/;"	S	language:Markdown
 单例模式	source/buffer/buffer_design.md	/^#### 单例模式$/;"	t	language:Markdown
+参考代码位置	cpp_compile_error.md	/^### 参考代码位置$/;"	S	language:Markdown
 命名冲突处理	source/buffer/buffer_design.md	/^#### 命名冲突处理$/;"	t	language:Markdown
+实测数据（1920x1080 @ 30fps）	include/display/display_buffer_usage_guide.md	/^### 实测数据（1920x1080 @ 30fps）$/;"	S	language:Markdown
+实际代码示例	cpp_compile_error.md	/^### 实际代码示例$/;"	S	language:Markdown
+常见困惑	cpp_compile_error.md	/^### 常见困惑$/;"	S	language:Markdown
+常见错误	cpp_compile_error.md	/^### 常见错误$/;"	S	language:Markdown
+快速参考	include/display/display_buffer_usage_guide.md	/^### 快速参考$/;"	S	language:Markdown
 或完全清理	cpp_compile_error.md	/^# 或完全清理$/;"	c	language:Markdown
 搜索类型定义	cpp_compile_error.md	/^# 搜索类型定义$/;"	c	language:Markdown
+操作符总结表	cpp_compile_error.md	/^### 操作符总结表$/;"	S	language:Markdown
 文档版本历史	source/buffer/buffer_design.md	/^## 文档版本历史$/;"	s	language:Markdown
+新 API（推荐）	include/display/display_buffer_usage_guide.md	/^### 新 API（推荐）$/;"	S	language:Markdown
+旧 API（已删除）	include/display/display_buffer_usage_guide.md	/^### 旧 API（已删除）$/;"	S	language:Markdown
 更新实现状态（第10章）	source/buffer/buffer_design.md	/^#### 更新实现状态（第10章）$/;"	t	language:Markdown
 更新文件结构（第11章）	source/buffer/buffer_design.md	/^#### 更新文件结构（第11章）$/;"	t	language:Markdown
 更新构造函数（第3章）	source/buffer/buffer_design.md	/^#### 更新构造函数（第3章）$/;"	t	language:Markdown
@@ -756,12 +790,17 @@ write_index_	include/videoFile/RtspVideoReader.hpp	/^    int write_index_;      
 查看编译器提示	cpp_compile_error.md	/^# 查看编译器提示$/;"	c	language:Markdown
 查询接口	source/buffer/buffer_design.md	/^#### 查询接口$/;"	t	language:Markdown
 校验接口	source/buffer/buffer_design.md	/^#### 校验接口$/;"	t	language:Markdown
+核心理解	cpp_compile_error.md	/^### 核心理解$/;"	S	language:Markdown
+核心设计理念	include/display/display_buffer_usage_guide.md	/^### 核心设计理念$/;"	S	language:Markdown
 注册管理接口	source/buffer/buffer_design.md	/^#### 注册管理接口$/;"	t	language:Markdown
 消费者接口	source/buffer/buffer_design.md	/^#### 消费者接口$/;"	t	language:Markdown
 现代编译器通常会提示：	cpp_compile_error.md	/^# 现代编译器通常会提示：$/;"	c	language:Markdown
 生产者接口	source/buffer/buffer_design.md	/^#### 生产者接口$/;"	t	language:Markdown
 生命周期追踪	source/buffer/buffer_design.md	/^#### 生命周期追踪$/;"	t	language:Markdown
+相关 C++ 标准	cpp_compile_error.md	/^### 相关 C++ 标准$/;"	S	language:Markdown
 知识点	cpp_compile_error.md	/^### 知识点$/;"	S	language:Markdown
+知识点 #10: std::unique_ptr 的解引用和访问操作符	cpp_compile_error.md	/^## 知识点 #10: std::unique_ptr 的解引用和访问操作符$/;"	s	language:Markdown
+知识点总结	cpp_compile_error.md	/^### 知识点总结$/;"	S	language:Markdown
 示例1：创建 Pool 时指定名称	source/buffer/buffer_design.md	/^#### 示例1：创建 Pool 时指定名称$/;"	t	language:Markdown
 示例2：全局监控所有 Pool	source/buffer/buffer_design.md	/^#### 示例2：全局监控所有 Pool$/;"	t	language:Markdown
 示例3：按名称查找 Pool	source/buffer/buffer_design.md	/^#### 示例3：按名称查找 Pool$/;"	t	language:Markdown
@@ -774,6 +813,8 @@ write_index_	include/videoFile/RtspVideoReader.hpp	/^    int write_index_;      
 解决方案	cpp_compile_error.md	/^### 解决方案$/;"	S	language:Markdown
 解决方案：BufferPoolRegistry（注册表模式）	source/buffer/buffer_design.md	/^#### 解决方案：BufferPoolRegistry（注册表模式）$/;"	t	language:Markdown
 设计考虑	cpp_compile_error.md	/^### 设计考虑$/;"	S	language:Markdown
+迁移步骤	include/display/display_buffer_usage_guide.md	/^### 迁移步骤$/;"	S	language:Markdown
+选择建议	include/display/display_buffer_usage_guide.md	/^### 选择建议$/;"	S	language:Markdown
 重构策略	cpp_compile_error.md	/^### 重构策略$/;"	S	language:Markdown
 错误 #1: 魔数字面量解析错误	cpp_compile_error.md	/^## 错误 #1: 魔数字面量解析错误$/;"	s	language:Markdown
 错误 #2: Buffer 构造函数参数不匹配	cpp_compile_error.md	/^## 错误 #2: Buffer 构造函数参数不匹配$/;"	s	language:Markdown
@@ -786,14 +827,21 @@ write_index_	include/videoFile/RtspVideoReader.hpp	/^    int write_index_;      
 错误 #9: 缺少头文件和默认参数类型不匹配	cpp_compile_error.md	/^## 错误 #9: 缺少头文件和默认参数类型不匹配$/;"	s	language:Markdown
 错误信息	cpp_compile_error.md	/^### 错误信息$/;"	S	language:Markdown
 错误原因	cpp_compile_error.md	/^### 错误原因$/;"	S	language:Markdown
+错误处理	include/display/display_buffer_usage_guide.md	/^### 错误处理$/;"	S	language:Markdown
 问题场景	source/buffer/buffer_design.md	/^#### 问题场景$/;"	t	language:Markdown
 附录 A: 错误处理策略	source/buffer/buffer_design.md	/^## 附录 A: 错误处理策略$/;"	s	language:Markdown
 附录 B: 性能指标	source/buffer/buffer_design.md	/^## 附录 B: 性能指标$/;"	s	language:Markdown
 附录 C: 常见问题	source/buffer/buffer_design.md	/^## 附录 C: 常见问题$/;"	s	language:Markdown
 高级接口	source/buffer/buffer_design.md	/^#### 高级接口$/;"	t	language:Markdown
 🎓 关键知识点总结	cpp_compile_error.md	/^## 🎓 关键知识点总结$/;"	s	language:Markdown
+🎯 三种显示方法对比	include/display/display_buffer_usage_guide.md	/^## 🎯 三种显示方法对比$/;"	s	language:Markdown
+📊 性能对比	include/display/display_buffer_usage_guide.md	/^## 📊 性能对比$/;"	s	language:Markdown
 📊 错误类型统计	cpp_compile_error.md	/^## 📊 错误类型统计$/;"	s	language:Markdown
 📋 目录	source/buffer/buffer_design.md	/^## 📋 目录$/;"	s	language:Markdown
 📚 参考资源	cpp_compile_error.md	/^## 📚 参考资源$/;"	s	language:Markdown
+📚 概述	include/display/display_buffer_usage_guide.md	/^## 📚 概述$/;"	s	language:Markdown
 📚 目录	cpp_compile_error.md	/^## 📚 目录$/;"	s	language:Markdown
+📝 总结	include/display/display_buffer_usage_guide.md	/^## 📝 总结$/;"	s	language:Markdown
+🔄 迁移指南：从旧 API 迁移	include/display/display_buffer_usage_guide.md	/^## 🔄 迁移指南：从旧 API 迁移$/;"	s	language:Markdown
 🛠️ 调试技巧	cpp_compile_error.md	/^## 🛠️ 调试技巧$/;"	s	language:Markdown
+🛡️ 错误处理最佳实践	include/display/display_buffer_usage_guide.md	/^## 🛡️ 错误处理最佳实践$/;"	s	language:Markdown

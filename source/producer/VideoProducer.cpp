@@ -80,15 +80,29 @@ bool VideoProducer::start(const Config& config) {
     printf("   Total frames: %d\n", total_frames_);
     printf("   Frame size: %zu bytes (%.2f MB)\n", frame_size, frame_size / (1024.0 * 1024.0));
     
-    // 验证帧大小是否匹配 BufferPool
-    if (frame_size != buffer_pool_.getBufferSize()) {
+    // 验证/设置帧大小
+    size_t pool_buffer_size = buffer_pool_.getBufferSize();
+    
+    if (pool_buffer_size == 0) {
+        // 动态注入模式：设置 buffer_size
+        printf("   Dynamic injection mode detected, setting buffer size...\n");
+        if (!buffer_pool_.setBufferSize(frame_size)) {
+            setError("Failed to set buffer size for dynamic injection mode");
+            video_file_.reset();
+            return false;
+        }
+    } else if (frame_size != pool_buffer_size) {
+        // 普通模式：验证大小匹配
         char error_msg[256];
         snprintf(error_msg, sizeof(error_msg),
                 "Frame size mismatch: video=%zu, buffer=%zu",
-                frame_size, buffer_pool_.getBufferSize());
+                frame_size, pool_buffer_size);
         setError(error_msg);
         video_file_.reset();
         return false;
+    } else {
+        // 大小匹配
+        printf("   Frame size matches BufferPool size: %zu bytes\n", frame_size);
     }
     
     // 重置状态
